@@ -1,0 +1,2011 @@
+Improving language models by retrieving
+from trillions of tokens
+Sebastian Borgeaudy, Arthur Menschy, Jordan Hoﬀmanny, Trevor Cai, Eliza Rutherford, Katie Millican,
+George van den Driessche, Jean-Baptiste Lespiau, Bogdan Damoc, Aidan Clark, Diego de Las Casas,
+Aurelia Guy, Jacob Menick, Roman Ring, Tom Hennigan, Saﬀron Huang, Loren Maggiore, Chris Jones,
+Albin Cassirer, Andy Brock, Michela Paganini, Geoﬀrey Irving, Oriol Vinyals, Simon Osindero,
+Karen Simonyan, Jack W. Raez, Erich Elsenzand Laurent Sifrey,z
+All authors from DeepMind,yEqual contributions,zEqual senior authorship
+We enhance auto-regressive language models by conditioning on document chunks retrieved from a
+large corpus, based on local similarity with preceding tokens. With a 2 trillion token database, our
+Retrieval-Enhanced Transformer ( R/e.sc/t.sc/r.sc/o.sc) obtains comparable performance to GPT-3 and Jurassic-1
+on the Pile, despite using 25 fewer parameters. After ﬁne-tuning, R/e.sc/t.sc/r.sc/o.scperformance translates to
+downstream knowledge-intensive tasks such as question answering. R/e.sc/t.sc/r.sc/o.sccombines a frozen B/e.sc/r.sc/t.sc
+retriever,adiﬀerentiableencoderandachunkedcross-attentionmechanismtopredicttokensbasedon
+an order of magnitude more data than what is typically consumed during training. We typically train
+R/e.sc/t.sc/r.sc/o.sc from scratch, yet can also rapidly R/e.sc/t.sc/r.sc/o.scﬁt pre-trained transformers with retrieval and still
+achieve good performance. Our work opens up new avenues for improving language models through
+explicit memory at unprecedented scale.
+1. Introduction
+Language modelling (LM) is an unsupervised task that consists of modelling the probability of text,
+usually by factorising it into conditional next-token predictions 𝑝¹𝑥1𝑥𝑛º=Î
+𝑖𝑝¹𝑥𝑖j𝑥𝑖º. Neural
+networks have proven to be powerful language models, ﬁrst in the form of recurrent architectures
+(Graves, 2013; Jozefowicz et al., 2016; Mikolov et al., 2010) and more recently in the form of
+Transformers (Vaswani et al., 2017), that use attention to contextualise the past. Large performance
+improvementshavecomefromincreasingtheamountofdata,trainingcompute,ormodelparameters.
+Transformers have been scaled from 100million parameter models in seminal work to over hundred
+billion parameters (Brown et al., 2020; Radford et al., 2019) in the last two years which has led to
+models that do very well on a wide array of tasks in a zero or few-shot formulation. Increasing model
+size predictably improves performance on a wide range of downstream tasks (Kaplan et al., 2020).
+The beneﬁts of increasing the number of parameters come from two factors: additional computations
+at training and inference time, and increased memorization of the training data.
+Inthiswork,weendeavortodecouplethese,byexploringeﬃcientmeansofaugmentinglanguage
+models with a massive-scale memory without signiﬁcantly increasing computations. Speciﬁcally, we
+suggest retrieval from a large text database as a complementary path to scaling language models.
+Instead of increasing the size of the model and training on more data, we equip models with the
+ability to directly access a large database to perform predictions—a semi-parametric approach. At
+a high level, our Retrieval Transformer ( R/e.sc/t.sc/r.sc/o.sc) model splits the input sequence into chunks and
+retrieves text similar to the previous chunk to improve the predictions in the current chunk. Existing
+retrieval for language modelling work only considers small transformers ( 100millions parameters)
+and databases of limited size (up to billions of tokens) (Guu et al., 2020; Khandelwal et al., 2020;
+Lewisetal.,2020;Yogatamaetal.,2021). Toourknowledge,ourworkistheﬁrsttoshowthebeneﬁts
+of scaling the retrieval database to trillions of tokens for large parametric language models. Our main
+Corresponding authors: {sborgeaud|amensch|jordanhoﬀmann|sifre}@deepmind.comarXiv:2112.04426v3  [cs.CL]  7 Feb 2022
+
+Improving language models by retrieving from trillions of tokens
+200 400 8001600 7500
+Number of Non-Embedding Params (M)0.70.80.91.0C4 Eval bits-per-byte
+172M 425M 1.5B 7.5B Baseline RETRO [OFF] RETRO [ON]
+01 10 100 1000 10000
+Retrieval dataset (B Tokens)0.70.80.91.0
+01 3510 3050100
+Number of neighbors0.70.80.91.0
+Figure 1jScaling of R/e.sc/t.sc/r.sc/o.sc.The performance gain of our retrieval models remains constant with
+model scale (left), and is comparable to multiplying the parameteric model size by 10. The gain
+increases with the size of the retrieval database (middle) and the number of retrieved neighbours
+(right) on the C4 validation set, when using up to 40 neighbours. Past this, performance begins to
+degrade, perhaps due to the reduced quality. At evaluation R/e.sc/t.sc/r.sc/o.sccan be used without retrieval
+data ( R/e.sc/t.sc/r.sc/o.sc[OFF]), bringing limited performance degradation compared to baseline transformers.
+contributions are the following.
+•We introduce R/e.sc/t.sc/r.sc/o.sc, a retrieval-enhanced autoregressive language model (§2.2). We use a
+chunked cross-attention module to incorporate the retrieved text (§2.4), with time complexity
+linear in the amount of retrieved data. We show that retrieving based on a pre-trained frozen
+B/e.sc/r.sc/t.scmodel (§2.3) works at scale, removing the need for training and updating a retriever
+network.
+•We show that our method scales well with model size and database size (Fig. 1): R/e.sc/t.sc/r.sc/o.sc
+provides a constant gain for models ranging from 150M to 7B parameters, and R/e.sc/t.sc/r.sc/o.sccan be
+improved at evaluation time by increasing the database size and the number of retrieved neigh-
+bours. Our largest model obtains state-of-the-art results on a range of downstream evaluation
+datasets including Wikitext103 (Merity et al., 2017) and the Pile (Gao et al., 2020) (§4). We
+show that R/e.sc/t.sc/r.sc/o.sccan be ﬁne-tuned to achieve competitive performance on downstream tasks
+such as question answering (§4.3).
+•We propose an evaluation aware of proximity of test documents with the training set (§2.6),
+addressing the problem of test set leakage (Lee et al., 2021). This is relevant for all language
+models,andespeciallyforretrieval-enhancedmodelssincetheyhavedirectaccesstothetraining
+dataset during evaluation. Using this methodology, we show that the performance of R/e.sc/t.sc/r.sc/o.sc
+comes from both explicit neighbour copying and general knowledge extraction (§4.4).
+2. Method
+Wedesignourretrieval-enhancedarchitecturetobecapableofretrievingfromadatabasewithtrillions
+of tokens. For this purpose, we retrieve at the level of contiguous token chunksinstead of individual
+tokenswhichreducesstorageandcomputationrequirementsbyalargelinearfactor. Ourmethodﬁrst
+constructs a key-value database, where values store raw chunks of text tokens and keys are frozen
+B/e.sc/r.sc/t.scembedddings (Devlin et al., 2019). We use a frozen model to avoid having to periodically
+re-compute embeddings over the entire database during training. Each training sequence is then split
+into chunks, which are augmented with their 𝑘-nearest neighbour retrieved from the database. An
+encoder-decoder architecture integrates retrieval chunks into the model’s predictions. We summarize
+theR/e.sc/t.sc/r.sc/o.scarchitecture in Fig. 2, and detail it in this section. We end the section by introducing
+2
+
+Improving language models by retrieving from trillions of tokens
+C C A F FW T r a ns f ormer 
+Enc o der 
+R etrie v al 
+d ataset 
+Frozen kNN Retriever 
+KV
+RETR O b lo c k ( x L ) N eig hb o ur s 
+In p ut 
+t o k ens Ch unk ed cr oss-att en tion ( C C A ) 
+B ER T B ER T 
+Condition 
+A tt ending c h unk s Enc o ded neig hb o ur s 
+C A 
+C A 
+A T T N Q 
+EMB REA D A tt end Enc o ded neig hb o ur s 
+C1 
+C2 
+C3 H1 
+H2 
+H3 
+HH1+ 
+H2+ E1E2E1
+E2
+CA (H1+, E1) 
+CA (H2+, E2) 
+CCA (H, E) 
+X
+Figure 2jR/e.sc/t.sc/r.sc/o.scarchitecture. Left:simpliﬁed version where a sequence of length 𝑛=12is split
+into𝑙=3chunksofsize 𝑚=4. Foreachchunk,weretrieve 𝑘=2neighboursof 𝑟=5tokenseach. The
+retrieval pathway is shown on top. Right:Details of the interactions in the C/c.sc/a.scoperator. Causality is
+maintained as neighbours of the ﬁrst chunk only aﬀect the last token of the ﬁrst chunk and tokens
+from the second chunk.
+a new methodology to evaluate language models when an evaluation set is partially present in the
+training set.
+2.1. Training dataset
+We use a multi-lingual version of MassiveText (Rae et al., 2021) for both training and retrieval data.
+The dataset consists of text documents from multiple sources and multiple languages totalling over
+5 trillion tokens (detailed in Table 1). Sequences are sampled from subsets of the training data,
+with sampling weights given in the right-most column of Table 1. We tokenize the dataset using
+SentencePiece (Kudo and Richardson, 2018) with a vocabulary of 128,000 tokens. During training
+(unless otherwise speciﬁed), we retrieve from 600B tokens from the training data. The training
+retrieval database is made of the same subsets as the training data, in proportion that matches
+the training sampling frequencies. During evaluation the retrieval database consists in the full
+union of these datasets, with the exception of books for which we use a sub-sample of 4%. The
+evaluation retrieval database thus contains 1.75T tokens. To limit test set leakage, we compute the
+13-gram Jaccard similarity between train and test documents using the MinHash scheme and remove
+all training documents with high similarity (0.8 or higher) to a validation or test set document.
+Additionally, we remove all validation and test articles from Wikitext103 (Merity et al., 2017) from
+our Wikipedia training data.
+2.2. Retrieval-enhanced autoregressive token models
+Our approach uses retrieval as a way to augment input examples at the granularity of small chunks
+of tokens. Formally, we consider sequences of integer tokens in 𝕍=»1𝑣¼, obtained using a text
+tokenizer1. Wespliteach 𝑛-token-longexample 𝑋=¹𝑥1𝑥𝑛ºintoasequenceof 𝑙chunks¹𝐶1𝐶𝑙º
+of size𝑚=𝑛
+𝑙, i.e.𝐶1,¹𝑥1𝑥𝑚º  𝐶𝑙,¹𝑥𝑛 𝑚¸1𝑥𝑛º2𝕍𝑚. We use𝑛=2048and𝑚=64.
+We augment each chunk 𝐶𝑢with a set R/e.sc/t.scD¹𝐶𝑢ºof𝑘neighbours from the database D.R/e.sc/t.scD(or
+1We use the notation »1𝑣¼,f1𝑣gthroughout the text.
+3
+
+Improving language models by retrieving from trillions of tokens
+R/e.sc/t.scfor brevity) is a non-trainable operator speciﬁed in §2.3. Token likelihoods are provided by a
+model, parameterized by 𝜃, that takes as input both previous tokens and their retrieved neighbours.
+This deﬁnes the following retrieval-enhanced sequence log-likelihood:
+𝐿¹𝑋j𝜃Dº,𝑙∑︁
+𝑢=1𝑚∑︁
+𝑖=1𝜃 
+𝑥¹𝑢 1º𝑚¸𝑖j¹𝑥𝑗º𝑗¹𝑢 1º𝑚¸𝑖¹R/e.sc/t.scD¹𝐶𝑢0ºº𝑢0𝑢
+ (1)
+We set R/e.sc/t.sc¹𝐶1º=;, namely the likelihood of tokens from the ﬁrst chunk does not depend on
+any retrieval data. This likelihood deﬁnition preserves autoregressivity : the probability of the 𝑖-th
+token of the 𝑢-th chunk, 𝑥¹𝑢 1º𝑚¸𝑖, only depends on previously seen tokens ¹𝑥𝑗º16𝑗¹𝑢 1º𝑚¸𝑖and on the
+data retrieved from the previous chunks ¹R/e.sc/t.sc¹𝐶𝑢0ºº𝑢0𝑢. We can therefore directly samplewith log-
+probability , where sampling within the chunk 𝐶𝑢is conditioned on the neighbours ¹R/e.sc/t.sc¹𝐶𝑢0ºº𝑢0𝑢.
+This makes retrieval-enhanced models directly comparable with the largest language models that are
+evaluated by sampling.
+2.3. Nearest neighbour retrieval
+Retrieval neighbours. Our database consists of a key-value memory. Each value consists of two
+contiguous chunks of tokens which we denote »𝑁𝐹¼where𝑁is theneighbour chunk which is used
+to compute the key, and 𝐹is itscontinuation in the original document. The corresponding key is
+theB/e.sc/r.sc/t.scembedding of 𝑁, averaged over time, that we denote B/e.sc/r.sc/t.sc¹𝑁º. For each chunk 𝐶, we
+retrieve its approximate 𝑘-nearest neighbours from our key-value database using the 𝐿2distance
+on BERT embeddings 𝑑¹𝐶𝑁º=jjB/e.sc/r.sc/t.sc¹𝐶º B/e.sc/r.sc/t.sc¹𝑁ºjj2
+2. The model receives the corresponding
+values R/e.sc/t.sc¹𝐶º,¹»𝑁1𝐹1¼»𝑁𝑘𝐹𝑘¼º. Both neighbour chunks and their continuations provide
+meaningful improvements, as illustrated in our ablation study (Appendix D). We use a length 64for
+both𝑁𝑗and𝐹𝑗, thus R/e.sc/t.sc¹𝐶ºhas a shape of 𝑘𝑟with𝑟=128. To avoid retrieving the chunk 𝐶𝑢¸1
+in the retrieval set R/e.sc/t.sc¹𝐶𝑢º, which would break causality during training, we ﬁlter out neighbours
+originating from the same document as the training sequence 𝑋.
+For a database of 𝑇elements, we can query the approximate nearest neighbours in O¹log𝑇ºtime.
+We use the SCaNN library (Guo et al., 2020) to achieve this. This means that we can query our
+2trillion token database in 10mswhilst evaluating or sampling from the model; this expense is
+amortizedoverachunklength. Performingretrievalon-the-ﬂyistooslowtokeepupwiththetraining
+calculations—we leverage the frozen aspect of the embedding operator B/e.sc/r.sc/t.scto precompute all
+approximate nearest neighbours and save the results as part of the data. In Fig. 9 in the Appendix, we
+show results where we only retrieve neighbours within Wikipedia. We ﬁnd that neighbours tend to
+come from 2-3 links away from a given article whereas random articles are more than 5 links apart.
+Table1jMassiveText . Thelastcolumnindicatesthesamplingweightduringtraining. Themultilingual
+subsets include documents in 10 languages. The full breakdown is given in §A.1.
+Source Token count (M) Documents (M) Multilingual Sampling frequency
+Web 977,563 1,208 Yes 55%
+Books 3,423,740 20 No 25%
+News 236,918 398 No 10%
+Wikipedia 13,288 23 Yes 5%
+GitHub 374,952 143 No 5%
+4
+
+Improving language models by retrieving from trillions of tokens
+2.4.R/e.sc/t.sc/r.sc/o.scmodel architecture
+Our model relies on an encoder-decoder transformer architecture, integrating the retrieved data
+through a cross-attention mechanism as introduced in Vaswani et al. (2017). First, the retrieved
+tokens R/e.sc/t.sc¹𝐶ºare fed into an encoder Transformer, which computes the encoded neighbours set 𝐸.
+Denoting the intermediate activations by 𝐻, our transformer decoder then interleaves R/e.sc/t.sc/r.sc/o.sc-blocks
+R/e.sc/t.sc/r.sc/o.sc¹𝐻𝐸ºandstandardTransformerblocks LM¹𝐻º(thehyperparameter 𝑃»1𝐿¼determinesat
+which layers we use a R/e.sc/t.sc/r.sc/o.sc-block). These blocks are built from three diﬀerent residual operators
+with signature ℝ𝑛𝑑!ℝ𝑛𝑑: a fully-connected layer F/f.sc/w.sc, the standard sequence-level self-attention
+layer A/t.sc/t.sc/n.sc, and a chunked cross-attention layer C/c.sc/a.sc¹𝐸ºthat incorporates information from the
+retrieval encoder:
+R/e.sc/t.sc/r.sc/o.sc¹𝐻𝐸º,F/f.sc/w.sc¹C/c.sc/a.sc¹A/t.sc/t.sc/n.sc¹𝐻º𝐸ººand L/m.sc¹𝐻º,F/f.sc/w.sc¹A/t.sc/t.sc/n.sc¹𝐻ºº(2)
+Since F/f.sc/w.sc,A/t.sc/t.sc/n.scandC/c.sc/a.scare all autoregressive operators whose output at position 𝑖only
+depends on¹ℎ𝑗º𝑗6𝑖, any succession of R/e.sc/t.sc/r.sc/o.scand/l.sc/m.sclayers, followed by a token classiﬁcation
+head deﬁnes an autoregressive log-likelihood (1). An overview of the model architecture is given in
+Algorithm 1 and in Fig. 2. We next describe the retrieval encoder and the chunked cross-attention
+layer in more detail, and explain how to sample from R/e.sc/t.sc/r.sc/o.sc.
+Encodingretrievalneighbours. Foreachchunk 𝐶𝑢,the𝑘retrievalneighbours R/e.sc/t.sc¹𝐶𝑢ºarefedinto
+a bi-directional transformer E/n.sc/c.sc/o.sc/d.sc/e.sc/r.sc , yielding the outputs 𝐸𝑗
+𝑢,E/n.sc/c.sc/o.sc/d.sc/e.sc/r.sc¹R/e.sc/t.sc¹𝐶𝑢º𝑗𝐻𝑢º2ℝ𝑟𝑑0,
+where𝑗2 »1𝑘¼indexes each neighbour. The retrieval encoder is a non-causal transformer. It
+is conditioned on 𝐻𝑢, the activations of chunk 𝐶𝑢, through cross-attention layers; this allows the
+representations of the retrieval encoder to be modulated by the retrieving chunk in a diﬀerentiable
+way. More precisely, the encoding of the 𝑗thneighbour of the 𝑢thchunk, R/e.sc/t.sc¹𝐶𝑢º𝑗, depends on the
+attended activation 𝐻𝑢,¹ℎ¹𝑢 1º𝑚¸𝑖º𝑖2»1𝑚¼2ℝ𝑚𝑑of chunk𝐶𝑢at layer min¹𝑃º. All neighbours for
+all chunks are encoded in parallel, yielding a full encoded set 𝐸,¹𝐸𝑗
+𝑢º𝑢2»1𝑙¼𝑗2»1𝑘¼2ℝ𝑙𝑘𝑟𝑑0. We
+denote𝐸𝑢2ℝ𝑘𝑟𝑑0as the encoded neighbours for chunk 𝑢2»1𝑙¼.
+Chunked cross-attention. To perform the C/c.sc/a.scoperation, we ﬁrst split a given intermediate acti-
+vation𝐻2ℝ𝑛𝑑into𝑙 1attending chunks
+𝐻¸
+𝑢,¹ℎ𝑢𝑚¸𝑖 1º𝑖2»1𝑚¼2ℝ𝑚𝑑
+𝑢2»1𝑙 1¼, as depicted on the
+right of Fig. 2. 𝐻¸
+𝑢holds the intermediary embeddings of the last token in chunk 𝐶𝑢and of the ﬁrst
+𝑚 1tokens in𝐶𝑢¸12. We compute the cross-attention between 𝐻¸
+𝑢and𝐸𝑢—the encoded retrieval
+set obtained from chunk 𝐶𝑢. Attention is computed across time and across neighbours simultaneously,
+as we merge the neighbour and time dimensions of 𝐸𝑢before applying cross-attention. Since there
+is a notion of alignment between data chunks and retrieval neighbours, we use relative positional
+encodings as described in §B.1.2.
+We concatenate the 𝑙 1outputs of the per-chunk cross-attentions (each of shape 𝑚𝑑) across
+time, and properly pad the result; we thus form the output activation C/c.sc/a.sc¹𝐻𝐸º2ℝ𝑛𝑑. Formally,
+for each chunk 𝐶𝑢and for each token 𝑖2»1𝑚¼we set
+C/c.sc/a.sc¹𝐻𝐸º𝑢𝑚¸𝑖 1,C/a.sc¹ℎ𝑢𝑚¸𝑖 1𝐸𝑢º (3)
+2The last token of chunk 𝐶𝑢is the ﬁrst to be able to access the retrieved content 𝐸𝑢while maintaining autoregressivity
+in(1). Hence, there is a one token overlap between chunk 𝐶𝑢=
+𝑥¹𝑢 1º𝑚¸𝑖
+𝑖2»1𝑚¼and the corresponding attending chunk
+𝐶¸
+𝑢,¹𝑥𝑢𝑚¸𝑖 1º𝑖2»1𝑚¼.
+5
+
+Improving language models by retrieving from trillions of tokens
+Algorithm 1: Overview of R/e.sc/t.sc/r.sc/o.scmodel architecture.
+Hyperparam: 𝑃and𝑃enc, indices of layers with cross-attention in the decoder and encoder
+respectively
+Hyperparam: 𝐿and𝐿enc, number of decoder layers and number of encoder layers.
+Input:𝑋2𝕍𝑛: sequence of tokens. ¹R/e.sc/t.sc¹𝐶𝑢ºº16𝑢6𝑙: the retrieved neighbours
+Output:𝑂2ℝ𝑛j𝕍j: the output logits
+defE/n.sc/c.sc/o.sc/d.sc/e.sc/r.sc¹R/e.sc/t.sc¹𝐶𝑢º16𝑢6𝑙𝐻º:
+¹𝐻𝑢º𝑢2»1𝑙¼ S/p.sc/l.sc/i.sc/t.sc¹𝐻º
+for𝑗2»1𝑘¼𝑢2»1𝑙¼do// Encoder shared across neighbours and chunks
+𝐸𝑗
+𝑢=E/m.sc/b.scenc¹R/e.sc/t.sc¹𝐶𝑢º𝑗º// May be shared with the decoder E M B
+for𝑝02»1𝐿enc¼do
+𝐸𝑗
+𝑢 A/t.sc/t.sc/n.scenc¹𝐸𝑗
+𝑢º// Bi-directional attention
+if𝑝02𝑃encthen
+𝐸𝑗
+𝑢 C/a.scenc¹𝐸𝑗
+𝑢𝐻𝑢º
+𝐸𝑗
+𝑢 F/f.sc/w.scenc¹𝐸𝑗
+𝑢º
+return𝐸
+𝐻 E/m.sc/b.sc¹𝑋º
+for𝑝2»1𝐿¼do
+𝐻 A/t.sc/t.sc/n.sc¹𝐻º// Causal attention
+if𝑝=min¹𝑃ºthen
+// The neighbour E N C O D E R is conditioned with the decoder activations of
+the last layer before the first cross-attention
+𝐸=E/n.sc/c.sc/o.sc/d.sc/e.sc/r.sc¹R/e.sc/t.sc¹𝐶𝑢º16𝑢6𝑙𝐻º
+if𝑝2𝑃then
+𝐻 C/c.sc/a.sc¹𝐻𝐸º
+𝐻 F/f.sc/w.sc¹𝐻º
+𝑂 R/e.sc/a.sc/d.sc¹𝐻º
+where C/a.scis the cross-attention residual operator over time-concatenated encoded neighbours. We
+recall that this operator is deﬁned in its simplest version by three parameter matrices 𝐾2ℝ𝑑𝑐𝑄2
+ℝ𝑑𝑐and𝑉2ℝ𝑑𝑑. For allℎ2ℝ𝑑and𝑌2ℝ𝑇𝑑, we deﬁne
+C/a.sc¹ℎ𝑌º,softmax¹𝑌𝐾𝑄𝑇ℎº𝑌𝑉 (4)
+where the softmax is performed on the second dimension and all products are matrix products. We
+use multi-head cross-attention, and add positional encodings to the softmax(see §B.1.2).
+The ﬁrst𝑚 1tokens cannot attend to any neighbour of a previous chunk; at these positions, we
+deﬁne C/c.sc/a.scas the identity, setting C/c.sc/a.sc¹𝐻𝐸º𝑗,ℎ𝑗for all tokens 𝑗2»1𝑚 1¼. Finally, the last token
+ℎ𝑙𝑚attends to the last retrieval set 𝐸𝑙and we set ℎ𝑙𝑚,C/a.sc¹ℎ𝑙𝑚𝐸𝑙º(not shown in Fig. 2). Listing 1
+contains a simpliﬁed implementation of C/c.sc/a.sc. Note that chunked cross-attention is autoregressive:
+the output of C/c.sc/a.scat position 𝑖depends on the sequence from tokens from 0to𝑖that is input to C/c.sc/a.sc.
+With R/e.sc/t.sc/r.sc/o.scmodels, even though each C/c.sc/a.sccross-attention attends only to the neighbours of
+the preceding chunk R/e.sc/t.sc¹𝐶𝑢 1º, the dependencies over previous neighbours are propagated via the
+self-attentionoperations. Theactivationsofthe 𝑖thtokeninthe 𝑢thchunkthereforepotentiallydepend
+upon the set of allprevious neighbours R/e.sc/t.sc¹𝐶𝑢0º𝑢0𝑢, without incurring the quadratic cost of cross
+attending to that set.
+6
+
+Improving language models by retrieving from trillions of tokens
+Sampling. Whensampling,attheendofachunk 𝐶𝑢,weuseSCaNNtoretrieveneighbours R/e.sc/t.sc¹𝐶𝑢º,
+based on the embedding B/e.sc/r.sc/t.sc¹𝐶𝑢º. The encoded neighbours 𝐸𝑢=E/n.sc/c.sc/o.sc/d.sc/e.sc/r.sc¹R/e.sc/t.sc¹𝐶𝑢ººare then
+used to condition the generation of the next chunk 𝐶𝑢¸1, which we do incrementally: overall the
+cost of sampling is thus quadratic in the size of the sampled sequence, as when sampling from
+regular Transformers; the added cost of retrieval is linear in the number of chunks 𝑙, and is negligible
+compared to the token sampling cost in practice.
+2.5. Baseline Transformer architecture
+We use a transformer (Vaswani et al., 2017) similar to the one described in (Radford et al., 2019),
+with some minimal changes: we replace LayerNorm with RMSNorm (Zhang and Sennrich, 2019) and
+use relative position encodings (Dai et al., 2019). As baselines, we train retrieval-free transformers
+with 132M, 368M, 1.3B and 7.0B parameters (embedding matrices are excluded from parameter
+counts). The hyperparameters we used are detailed in Table 2. All retrieval models use the same
+size encoder for the retrieval data, with 𝑑0=896and 2 layers, which roughly adds 19𝑀parameters.
+The encoder uses relative positional encodings. The retrieval models contain one R/e.sc/t.sc/r.sc/o.sc-block every
+3 blocks, starting from layer 6. For our smallest model, C/c.sc/a.scis applied in layers 6, 9 and 12 of the
+main pathway and also once for query conditioning in the encoder, which adds an additional 12𝑀
+parameters. The relative number of extra parameters reduces as we increase the baseline model size.
+All models are implemented using JAX (Bradbury et al., 2018) and Haiku (Hennigan et al., 2020).
+2.6. Quantifying dataset leakage exploitation
+R/e.sc/t.sc/r.sc/o.scmodels may arguably beneﬁt more easily from evaluation dataset leakage, i.e. the fact that
+we evaluate on data that were also present in the training set. To better understand how retrieval
+improves language modelling performance, we therefore quantify evaluation likelihood as a function
+of the overlap between the evaluation and training datasets.
+The following approach can be used with any language model, and depends only on the frozen
+retriever system presented in §2.3. We split the evaluation sequences ¹𝑋𝑖º𝑖into chunks of length
+𝑚64, and we see the training data as a set of chunks C. For each evaluation chunk 𝐶2C, we
+retrieve the 10 closest neighbours (of length up to 128) in the training data. We then compute the
+longesttokensubstringcommontoboththeevaluationchunkanditsneighbours. Thisgivesanumber
+𝑠2»0𝑚¼. The value 𝑟¹𝐶º=𝑠
+𝑚, ranging from 0(chunk never seen) to 1(chunk entirely seen), gives a
+reliable indication of how much overlap there is between the evaluation chunk and the training data.
+For a given model, we then obtain the log-likelihood ¹𝐶ºof each chunk 𝐶, and the number of bytes
+𝑁¹𝐶ºit encodes. We then consider the ﬁltered bits-per-bytes of the model:
+8𝛼2»01¼C𝛼,f𝐶2C𝑟¹𝐶º6𝛼gbpb¹𝛼º,Í
+𝐶2C𝛼¹𝐶ºÍ
+𝐶2C𝛼𝑁¹𝐶º (5)
+Table 2jNumber of parameters for our baseline and R/e.sc/t.sc/r.sc/o.scmodels, excluding embeddings, along
+with the corresponding hyperparameters.
+Baseline parameters R/e.sc/t.sc/r.sc/o.sc 𝑑 𝑑 ﬀw# heads Head size # layers
+132M 172M (+30%) 896 3,584 16 64 12
+368M 425M (+15%) 1,536 6,144 12 128 12
+1,309M 1,451M (+11%) 2,048 8,192 16 128 24
+6,982M 7,532M (+8%) 4,096 16,384 32 128 32
+7
+
+Improving language models by retrieving from trillions of tokens
+whichcorrespondtothebits-per-bytesonthesetofchunksthatoverlaplessthan 𝛼%withthetraining
+chunks. Note that the full evaluation bit-per-bytes performance is recovered by bpb¹1º. The function
+bpb¹ºallows us to evaluate the impact of evaluation leakage over predictive performance: for low 𝛼,
+bpb¹𝛼ºgives an indication on how the model performs on chunks that are entirely new; the slope of
+bpb¹ºshows how much the model exploits evaluation leakage.
+3. Related Work
+Weﬁrstreviewexistingworkonusingretrievalforlanguagemodelling,andcompare R/e.sc/t.sc/r.sc/o.sctothese
+works (see Table 3). As we train R/e.sc/t.sc/r.sc/o.scmodels on a large dataset containing a substantial section
+of the internet, our work raises potential privacy, safety, and fairness issues that we then review.
+3.1. Retrieval for language modelling
+Brants et al. (2007) show that scaling the training data to trillions of tokens improves the machine
+translationperformanceof 𝑛-grammodels. Morerecently,GPT-2(Radfordetal.,2019),GPT-3(Brown
+et al., 2020), and Jurassic-1 (Lieber et al., 2021) show that scaling up language models leads to
+massiveimprovementsonmanydownstreamtasks. Atthesametime,Carlinietal.(2021)demonstrate
+that large-scale language models can perfectly memorise parts of their training data, suggesting that
+enhancing models with retrieval may lead to further improvements. However, signiﬁcant leakage
+betweentrainandtestdatasets(Leeetal.,2021;Lewisetal.,2021)makescomparingandevaluating
+large models trained on large datasets diﬃcult, especially once retrieval capabilities over the training
+dataset are added.
+Historically, information retrieval for text relies on inverted index matching such as TF-IDF and
+BM25 (Robertson and Zaragoza, 2009). Foundational work use latent topic modelling approaches
+like LDA (Blei et al., 2003) to identify relevant neighbours (Wei and Croft, 2006). Work in machine
+translation such as Zhang et al. (2018) and Gu et al. (2018) retrieve translation pairs based on edit
+distance between source sentences and guide the translation output using the closest retrieved target
+sentences. The retrieval database may also be structured — for example, Ahn et al. (2016) use a
+symbolic knowledge graph to improve an RNN language model.
+With the success of deep learning, retrieving systems have partly switched to dense learned
+representations based on a neural network’s activations. Continuous cache (Grave et al., 2017)
+adds probability mass to tokens for which previous activations resemble the current activation
+vector, extending the model’s context to the local history. 𝑘NN-LM(Khandelwal et al., 2020) applies
+this idea to transformers and extends the retrieval database to English Wikipedia, resulting in
+Table 3jComparison of R/e.sc/t.sc/r.sc/o.scwith existing retrieval approaches.
+# Retrieval tokens Granularity Retriever training Retrieval integration
+Continuous Cache O 103Token Frozen ( LSTM) Add to probs
+𝑘NN-LM O 109Token Frozen (Transformer) Add to probs
+S/p.sc/a.sc/l.sc/m.sc O 109Token Frozen (Transformer) Gated logits
+D/p.sc/r.sc O 109Prompt Contrastive proxy Extractive QA
+R/e.sc/a.sc/l.sc/m.sc O 109Prompt End-to-End Prepend to prompt
+RAG O 109Prompt Fine-tuned D/p.sc/r.sc Cross-attention
+F/i.scD O 109Prompt Frozen D/p.sc/r.sc Cross-attention
+E/m.sc/d.sc/r.sc2O 109Prompt End-to-End (EM) Cross-attention
+R/e.sc/t.sc/r.sc/o.sc(ours)O 1012Chunk Frozen ( B/e.sc/r.sc/t.sc) Chunked cross-attention
+8
+
+Improving language models by retrieving from trillions of tokens
+substantial improvements on Wikitext103 evaluation. Continuous cache and 𝑘NN-LMdo not modify
+the underlying neural-network models, but interpolate at inference between the language model’s
+output and distributions computed from retrieved tokens. These methods can therefore be plugged
+into any model without additional training, although this limits the model’s ability to reason about
+the retrieved text. S/p.sc/a.sc/l.sc/m.sc(Yogatama et al., 2021) addresses this limitation by adding an extra gating
+network to post-process the retrieved data; yet most of the network is unaﬀected by the retrieval
+during inference.
+The retrieval representations may be trained directly instead of relying on a pre-trained model—
+retrieversystemshavebeendevelopedforthispurpose,primarilyonopen-domainquestionanswering.
+Forexample, D/p.sc/r.sc(Karpukhinetal.,2020)trainstwo B/e.sc/r.sc/t.scmodels(forqueriesandkeysrespectively)
+using a contrastive loss to align the representations of a question and of its answers. Lee et al. (2019)
+useaninverseclozetasktoﬁndsemanticrepresentationsofpassagesforretrieval. Theseworksdiﬀers
+from continuous cache and 𝑘NN-LMin that they embeds passages (or chunks) of text together, as
+opposed to each token individually. The retriever network is trained in isolation of the downstream
+task that uses the retrieval data. This potential issue is speciﬁcally addressed by R/e.sc/a.sc/l.sc/m.sc(Guu et al.,
+2020), which trains the retrieval system end-to-end to maximize the ﬁnal training cross-entropy. This
+comes with the extra complexity of searching the database during training and periodically updating
+the embedding table, severely limiting the scale at which it can operate. RAG(Lewis et al., 2020)
+andF/i.scD(Izacard and Grave, 2021) build upon D/p.sc/r.scto set the state of the art on question answering
+benchmarks by training encoder-decoder transformer models. More recently, E/m.sc/d.sc/r.sc2(Sachan et al.,
+2021) extends F/i.scDby using an expectation-maximization algorithm to train the retriever end-to-end
+and achieves state of the art results compared to similarly sized models.
+In the open-domain dialogue setting, BlenderBot 2.0 (Komeili et al., 2021) learns to issue textual
+internet queries, outperforming dense retrieval methods when evaluated on a task measuring how
+close model responses are to those of humans. This involves collecting a dataset of human dialogues
+with associated search queries, which limits the scalability of this approach. Hashemi et al. (2020)
+introduce the Guided Transformer, a modiﬁed Transformer similar to R/e.sc/t.sc/r.sc/o.sc, for document retrieval
+and clarifying question selection. Although eﬀective on question answering and other tasks with
+strongconditioning,noneofthesemethodsaredesignedtomodelarbitrarytextsequences,incontrast
+with R/e.sc/t.sc/r.sc/o.sc.
+R/e.sc/t.sc/r.sc/o.scsharescomponentswith 𝑘NN-LMandD/p.sc/r.scinthatitusesfrozenretrievalrepresentations.
+R/e.sc/t.sc/r.sc/o.scmodels longer sequences than QA examples; this requires to reason at a sub-sequence level,
+and to retrieve diﬀerent documents for the diﬀerent chunks of a sequence. Similar to F/i.scD,R/e.sc/t.sc/r.sc/o.sc
+processes the retrieved neighbours separately in the encoder, and assemble them in the chunked
+cross-attention. This diﬀers from e.g. R/e.sc/a.sc/l.sc/m.sc, that prepends retrieved documents to the prompt.
+Using chunks allows for repeated retrieval whilst generating a sequence as opposed to retrieving
+only once based on the prompt alone. Furthermore, retrieval is done during the whole pre-training
+process in R/e.sc/t.sc/r.sc/o.sc, and is not simply plugged-in to solve a certain downstream task. Finally, previous
+methods based on dense query vectors use small models and retrieval datasets with less than 3B
+tokens (English Wikipedia). Table 3 summarizes the diﬀerence of R/e.sc/t.sc/r.sc/o.scwith existing approaches.
+3.2. Privacy, safety and fairness
+Bender et al. (2021); Weidinger et al. (2021) highlight several dangers of large language models.
+Those stem from their ability to memorise training data, their high training cost, the static nature
+of their training data (Lazaridou et al., 2021), their tendency of amplifying inherent biases in the
+training data, and their ability to generate toxic language (Gehman et al., 2020). In this section we
+inspect these dangers, focusing on how retrieval augmented language models may exacerbate or
+9
+
+Improving language models by retrieving from trillions of tokens
+mitigate them.
+Large language models can perfectly memorise parts of their training data (Carlini et al., 2021).
+When coupled with large training datasets gathered from the web or other sources, this has clear
+privacyandsafetyimplications. Retrievalmodelssuchas R/e.sc/t.sc/r.sc/o.scthathaveaccesstotheentiretraining
+dataset during inference exacerbate these privacy issues by being able to directly copy training data.
+However, retrieval systems oﬀer a path towards mitigating these concerns via obliteration of the
+retrievable data at inference time. In addition, diﬀerential privacy training (Abadi et al., 2016) of
+retrieval models could guarantee that no private information is stored in the model weights, while
+individualisation on private data could be made by updating the retrieval database at inference time.
+Due to their high training cost, re-training large language model regularly to incorporate new
+data, languages, and norms is prohibitively expensive. To keep retrieval models up-to-date, it may be
+suﬃcient to update the retrieval database, which is orders of magnitude cheaper than re-training
+a model from scratch. In addition to the beneﬁts of updating models in terms of fairness and bias,
+simply training large language models has a signiﬁcant energy cost (Schwartz et al., 2020; Strubell
+et al., 2019). Retrieval mechanisms oﬀer a path to reducing the compute requirements needed to
+train and update language models that reach a certain performance.
+Large language models are prone to generating toxic outputs, as shown in Gehman et al. (2020).
+Benderetal.(2021);JoandGebru(2020)advocatefortheimportanceofbettertrainingdatacuration
+and documentation. Additionally, if portions of the training data are found to be eliciting biased or
+toxic outputs after training, retrieval allows for some correction, as the oﬀending retrieval data can
+be retroactively ﬁltered. However, it is also the case that without careful analysis and intervention,
+retrieval models may exacerbate biases that are present in the training data. Retrieval models can
+also add a further source of bias through the selection mechanism for retrieval documents. Further
+work in this area is required to better understand how retrieval aﬀects the bias and toxicity of the
+model outputs.
+Finally, samples from large models are diﬃcult to interpret, making mitigating these issues all the
+more challenging (Belinkov et al., 2020; Jain and Wallace, 2019). Retrieval provides more insights in
+to the outputs of a model, as one can directly visualise or modify the neighbours that are being used.
+The examples in Table 6, 7, 20 and 21 illustrate how retrieval makes language models more factual
+and interpretable by providing more transparent outputs.
+4. Results
+We ﬁrst report results on language modelling benchmarks. Second, we show how to R/e.sc/t.sc/r.sc/o.scﬁt
+pre-trained Transformer language models into retrieval models with few additional FLOPs. Next,
+we report R/e.sc/t.sc/r.sc/o.scresults on question answering. Finally, we report evaluation metrics with leakage
+ﬁltering, to better understand the source of the gains with retrieval.
+4.1. Language modelling
+Datasets. We evaluate our models on C4 (Raﬀel et al., 2020), Wikitext103 (Merity et al., 2017),
+Curation Corpus (Curation, 2020), Lambada (Paperno et al., 2016) and the Pile (Gao et al., 2020).
+We also evaluate on a set of manually selected Wikipedia articles that were added or heavily edited in
+September 2021, months after our pre-training and retrieval dataset was collected (details are given
+in §A.2). We construct the dataset with articles from the “future” and manually remove new articles
+that strongly overlap documents in our training data. This guarantees that the evaluation documents
+are not leaked in our training data.
+10
+
+Improving language models by retrieving from trillions of tokens
+200 400 8001600 7500
+Non-Embedding Params (M)0.450.500.550.600.650.70
+a) LAMBADA Accuracy172M 425M 1.5B 7.5B Baseline RETRO [OFF] RETRO [ON]
+200 400 8001600 7500
+Non-Embedding Params (M)0.500.550.600.650.70
+b) Curation Corpus bpb
+200 400 8001600 7500
+Non-Embedding Params (M)2351020
+c) Wikitext103 Perplexity
+200 400 8001600 7500
+Non-Embedding Params (M)0.600.650.700.750.800.85
+d) Wikipedia Sept 21 bpb
+Figure 3jScaling with respect to model size. (a) LAMBADA top-1 accuracy. (b) Evaluation loss on
+curation corpus. (c) Perplexity on Wikitext103 valid. (d) Bits-per-byte on selected Wikipedia articles
+from September 2021.
+For C4, Wikitext103, the Pile, and our Wikipedia dataset we evaluate the language modelling
+performance on entire documents and measure the bits-per-byte (bpb). We favour bits-per-byte over
+loss as it is tokenizer agnostic. We evaluate with a sequence length of 2048 tokens but use a stride of
+1024 within documents to mitigate boundary eﬀects. On Curation Corpus we concatenate the article,
+the “TL;DR:” string, and the summary, but only evaluate the bpb on the summary. For Lambada we
+evaluate the accuracy on the last word, using greedy generation.
+Model scaling. In Fig. 1(left) and Fig. 3 we show the language modelling performance as we scale
+models from 150 million to 7 billion (non-embedding) parameters. We see that on all datasets,
+R/e.sc/t.sc/r.sc/o.scoutperforms the baseline at all model sizes. Furthermore, we observe that improvements do
+not diminish as we scale the models. The performance is dataset dependent, with the largest gains on
+Wikitext103 and C4. Wikipedia articles and other web pages are similar to Wikitext103 documents,
+evenifnotexactcopies(§4.4),wethusobtaindramaticimprovementsonWikitext103asourretrieval
+model is able to directly exploit these overlaps. The smallest gains are for Curation Corpus, where
+R/e.sc/t.sc/r.sc/o.sconly slightly outperforms the baseline. This is expected as Curation Corpus summaries are
+designed to only contain information from the source article and are not included in our retrieval
+database. On our “future” Wikipedia September 2021 dataset, we also observe consistent gains for
+all model sizes.
+Data scaling. Fig. 1 (middle) shows how scaling the retrieval database at evaluation improves the
+language modelling performance. We observe dramatic gains as the retrieval data is increased from
+Wikipedia(4billiontokens)toallofMassivetext(1.7Ttokens). Fig.1(right)showshowperformance
+scales as we increase the number of retrieved chunks. Despite being only trained with 2 neighbours,
+we see consistent improvements for all models when the number of neighbours is increased from 1 to
+10. Furthermore, we observe that larger models are able to better utilise more neighbours: the 172M
+model improves with up to 10 neighbours, whereas the 7B model improves with up to 40 neighbours.
+The Pile. Weevaluateour7BmodelsonthePiletestsets3andcompareagainstthe178Bparameter
+Jurrasic-1 (Lieber et al., 2021) model and the 280B parameter Gopher (Rae et al., 2021) model. We
+do not compare against GPT-3 as it is outperformed by Jurassic-1 and Gopher on almost all subsets.
+Fig. 4 shows the relative improvements in bits-per-byte over our 7B transformer baseline for our
+3Due to legal and ethical concerns relating to their use, we exclude the Enron Emails and the Youtube Subtitles datasets.
+11
+
+Improving language models by retrieving from trillions of tokens
+dm_mathematics
+ubuntu_irc
+nih_exporter
+arxiv
+uspto_backgrounds
+opensubtitles
+philpapers
+hackernews
+stackexchange
+freelaw
+pubmed_abstracts
+books3
+pile_cc
+pubmed_central
+gutenberg_pg_19
+github20
+020406080100% improvementRelative bits-per-byte improvement over our 7B baseline without retrieval
+Jurassic-1 (178B)
+Gopher (280B)
+RETRO (7.5B)
+Figure4jThePile: Comparisonofour7BbaselineagainstJurassic-1, Gopher, and R/e.sc/t.sc/r.sc/o.sc.We
+observe that the retrieval model outperforms the baseline on all test sets and outperforms Jurassic-1
+on a majority of them, despite being over an order of magnitude smaller.
+7.5B R/e.sc/t.sc/r.sc/o.scmodel, Jurassic-1 and Gopher. Jurassic-1 outperforms the baseline on all datasets
+except for books, likely due to the inclusion of books in our training data. Gopher and R/e.sc/t.sc/r.sc/o.sc
+outperform the baseline on all test sets. Overall, R/e.sc/t.sc/r.sc/o.sc7.5B outperforms Jurassic-1 and Gopher on
+a majority of the test sets. On the dm_mathematics andubuntu_irc subsets, our R/e.sc/t.sc/r.sc/o.scmodel
+doesnotoutperformour7BbaselineandunderperformsJurassic-1. Wehypothesisethattheretrieved
+neighbours on these datasets are not helpful, due to a combination of what is in our retrieval dataset
+and the eﬃcacy of the nearest-neighbour search.
+Wikitext103. Tovalidateourapproachinacontrolledsetting,wecompareourmethodwith 𝑘NN-LM
+(Khandelwal et al., 2020) on the Wikitext103 dataset in Table 4. We train a baseline transformer
+on the training set of Wikitext103. This transformer has 24 layers, 1024 hidden units, 16 heads
+and a key size of 64, as in Baevski and Auli (2019). Our baseline does not have adaptive input, and
+our tokenizer has an open vocabulary, unlike Baevski and Auli (2019), which makes our baseline
+Table 4jPerplexities on Wikitext103. When using the Wikpedia dataset for retrieval, R/e.sc/t.sc/r.sc/o.sc
+performs similarly to our implementation of 𝑘NN-LM. As we scale the retrieval dataset, R/e.sc/t.sc/r.sc/o.sc
+performs much better. The perplexities for retrieving from full MassiveText are quite low, which is
+partly due to partial overlap with Wikitext103 not caught by our deduplication.
+Model Retrieval Set #Database tokens #Database keys Valid Test
+Adaptive Inputs (Baevski and Auli, 2019) - - - 17.96 18.65
+S/p.sc/a.sc/l.sc/m.sc(Yogatama et al., 2021) Wikipedia 3B 3B 17.20 17.60
+𝑘NN-LM (Khandelwal et al., 2020) Wikipedia 3B 3B 16.06 16.12
+Megatron (Shoeybi et al., 2019) - - - - 10.81
+Baseline transformer (ours) - - - 21.53 22.96
+𝑘NN-LM (ours) Wikipedia 4B 4B 18.52 19.54
+R/e.sc/t.sc/r.sc/o.sc Wikipedia 4B 0.06B 18.46 18.97
+R/e.sc/t.sc/r.sc/o.sc C4 174B 2.9B 12.87 10.23
+R/e.sc/t.sc/r.sc/o.sc MassiveText (1%) 18B 0.8B 18.92 20.33
+R/e.sc/t.sc/r.sc/o.sc MassiveText (10%) 179B 4B 13.54 14.95
+R/e.sc/t.sc/r.sc/o.sc MassiveText (100%) 1792B 28B 3.21 3.92
+12
+
+Improving language models by retrieving from trillions of tokens
+perplexities a bit higher. The full experiment details and hyperparameters are given in §C.2 and
+Table 11.
+We re-implement 𝑘NN-LMwith our tokenizer and baseline transformer to produce embeddings of
+size 1024 for every token in Wikitext103. 𝑘NN-LMhas probabilities 𝑝𝑘NN-LM =𝜆𝑝𝑘NN¸¹1 𝜆º𝑝L/m.sc
+with𝑝𝑘NN¹𝑛𝑘º/exp¹ 𝛼𝑑𝑘º. We tune 𝜆=0118and𝛼=000785on the validation set (Fig. 7) and
+report performance for these hyperparameters on both the validation and test set.
+We ﬁne-tune our baseline transformer into a R/e.sc/t.sc/r.sc/o.scmodel (Fig. 7), using the Wikitext103
+training data and retrieving from Wikipedia with 2 neighbours. We only train the new weights, as
+explained in §4.2, and share the embedding weights between the encoder and the main pathway.
+This is necessary for Wikitext103 which is quite small, as training R/e.sc/t.sc/r.sc/o.scfrom scratch in this setting
+leads to over-ﬁtting.
+We evaluate the ﬁne-tuned R/e.sc/t.sc/r.sc/o.scmodel with diﬀerent retrieval sets. We use 10 neighbours at
+evaluation for both R/e.sc/t.sc/r.sc/o.scand𝑘NN-LM. When retrieving from Wikipedia, we obtain results com-
+parable to our 𝑘NN-LM implementation. Furthermore, scaling the retrieval database to MassiveText
+yields dramatic improvements, though this is partly due to leakage (see §4.4). For reproducibility,
+we also include results when retrieving from C4, which are close to previous state-of-the-art and
+comparable to using 10 % of MassiveText.
+It is worth noting that 𝑘NN-LMrequires 1024 ﬂoats for every token in the retrieval dataset,
+totalling 15 terabytes (Tb) for the 4 billion tokens in Wikipedia. 𝑘NN-LMand other token-level
+retrieval approaches therefore don’t scale to retrieval databases with trillions of tokens such as
+MassiveText. In comparison, R/e.sc/t.sc/r.sc/o.sconly requires 215Gb to index our Wikipedia dataset, and 93Tb
+for MassiveText. Inspecting the number of retrieval database entries in Table 4 makes it clear why
+retrieving at the chunk level is necessary when scaling to datasets with trillions of tokens.
+4.2.R/e.sc/t.sc/r.sc/o.sc-ﬁtting baseline models
+We extend baseline models into R/e.sc/t.sc/r.sc/o.scmodels by freezing the pre-trained weights and training
+only chunked cross-attention and neighbour encoder parameters (less than 10% of weights for the
+7B model) in Fig. 5. This oﬀers an eﬃcient alternative path to enhance transformers with retrieval,
+requiring only 6 million sequences (3% of the pre-training sequences that we used). Additionally,
+by only training the new weights we ensure that when evaluated without retrieval, the original
+modelperformanceisexactlymaintained. R/e.sc/t.sc/r.sc/o.scﬁttingmodelsquicklysurpassestheperformanceof
+baseline models and even achieves performance close to that of R/e.sc/t.sc/r.sc/o.scmodels trained from scratch.
+The experiment hyperparameters are given in §C.3.
+4.3. Question answering
+We ﬁne-tune our retrieval models on the Natural Questions (Kwiatkowski et al., 2019) dataset
+to demonstrate that our retrieval pathway can be used to inject information from arbitrary data
+sources. We use the version4provided by Izacard and Grave (2021) which is augmented with the
+retrieved passages from D/p.sc/r.sc(Karpukhin et al., 2020). We ﬁne-tune all the weights of our 7.5B
+pre-trained R/e.sc/t.sc/r.sc/o.scmodel for 25,000 steps using the top 20 retrieved passages. We format the
+data as “ question: {question} \n answer: {answer} ” and left pad the data such that
+“answer: ” coincides with the end of the ﬁrst chunk of 64 tokens and thus aligns with the ﬁrst
+retrievingchunk. Themodelhasaccesstothequestionviatheprevioustokensinthesequenceaswell
+as the top 20 DPR Wikipedia passages and their titles via the chunked cross-attention mechanism.
+4https://github.com/facebookresearch/FiD
+13
+
+Improving language models by retrieving from trillions of tokens
+Figure5jR/e.sc/t.sc/r.sc/o.sc-ﬁttingabaselinetransformer. Anytransformercanbeﬁne-tunedintoaretrieval-
+enhanced transformer by randomly initializing and training only the chunked cross-attention and
+retrieval encoder weights. Fine-tuning in this way quickly recovers and surpasses the non-retrieval
+performance, and almost achieves the same performance as training a retrieval model from scratch
+(shown by the arrow on the right hand side of each plot). We ﬁnd good performance R/e.sc/t.sc/r.sc/o.sc-ﬁtting
+our models training on only 3% the number of tokens seen during pre-training.
+The exact match scores are shown in Table 5 and the full ﬁne-tuning details are given in §C.4. Our
+method is competitive with previous approaches such as R/e.sc/a.sc/l.sc/m.sc,RAGandD/p.sc/r.sc, but underperforms
+the more recent F/i.scD. In contrast with this work, we ﬁnd that increasing the number of neighbours
+past20doesnotimprove R/e.sc/t.sc/r.sc/o.scperformanceonthistask. Wehypothesisethattheencoder-decoder
+structure of T5—the base model in F/i.scD— and the T5 pre-training objective leads to a model that
+relies more on the encoder output than R/e.sc/t.sc/r.sc/o.sc, which is important in the QA setting. To compete
+with T5-ﬁnetuned models, future work should consider ways of forcing R/e.sc/t.sc/r.sc/o.scto rely further on the
+retrieval encoder output when producing tokens.
+4.4. Relating retrieval performance to dataset leakage.
+Wereporttheﬁlteredevallossesasdetailedin§2.6onC4, CurationCorpusandWikitext103inFig.6.
+On C4 and Wikitext103, for which there is leakage into the training set, the slope is negative for both
+baseline models and R/e.sc/t.sc/r.sc/o.scmodels. R/e.sc/t.sc/r.sc/o.scmodels exploit leakage more strongly than baseline
+models,asindicatedbythemorenegativeslope. Thisisduetoitsexplicitabilitytocopy-pasteexisting
+training chunks to predict leaked evaluation chunks (see a qualitative example of this model behavior
+Table 5jQuestion answering results. Exact match accuracy on Natural Questions.
+Model Test Accuracy
+R/e.sc/a.sc/l.sc/m.sc(Guu et al., 2020) 40.4
+D/p.sc/r.sc(Karpukhin et al., 2020) 41.5
+RAG(Lewis et al., 2020) 44.5
+E/m.sc/d.sc/r.sc2(Sachan et al., 2021) 52.5
+F/i.scD(Izacard and Grave, 2021) 51.4
+F/i.scD+ Distill. (Izacard et al., 2020) 54.7
+Baseline 7B (closed book) 30.4
+R/e.sc/t.sc/r.sc/o.sc7.5B (DPR retrieval) 45.5
+14
+
+Improving language models by retrieving from trillions of tokens
+12.5% 50% 100%0.70.80.91.0Eval bpbC4172M 425M 1.5B 7.5B Baseline RETRO [ON]
+12.5% 50% 100%
+Max eval/train chunk overlap when filtering0.500.550.600.65Curation Corpus
+12.5% 50% 100%0.20.40.60.8Wikitext103
+12.5% 50% 100%0.600.650.700.750.800.85Wikipedia Sept 2021
+Figure 6jPerformance vs. longest common retrieval substring. Evaluation loss as a function of
+allowed longest common substring between evaluation data chunks and their nearest neighbours.
+Retrieval still helps when considering chunks with no more than 8 contiguous tokens overlapping
+with training dataset chunks.
+on a Wikitext103 article in Table 19). On Curation Corpus, retrieval provides a constant oﬀset, which
+is expected as there is by design no leakage between Curation Corpus and the training dataset.
+On the other hand, R/e.sc/t.sc/r.sc/o.scoutperforms baseline models at all leakage levels, down to 𝛼=125%.
+At this level, the loss is computed on chunks with less than 8contiguous tokens shared with the
+closest matching chunk in the training dataset—this is a reasonable level of overlap at which we
+consider that there is no local leakage. Retrieval thus improves predictions on both chunks that are
+syntactically similar to chunks in the training set, and on chunks that are syntactically diﬀerent from
+all training chunks. This points toward a non trivial R/e.sc/t.sc/r.sc/o.sccapacity of generalizing based on both
+model parameters and retrieval database. Similar results are found on the Pile dataset (see Fig. 12,
+§F.3).
+4.5. Using R/e.sc/t.sc/r.sc/o.scfor sampling
+We show examples of samples obtained using the 7.5B R/e.sc/t.sc/r.sc/o.scmodel in Table 6, Table 7 and
+Appendix E. For each chunk (the ﬁrst one being the prompt), we juxtapose sampled chunks 𝐶𝑢with
+retrieved neighbours R/e.sc/t.sc¹𝐶𝑢º. To give an indication of local overlap, we colour each sampled token
+in chunk𝐶𝑢based on the length of the longest common preﬁx (LCP) found in the retrieved chunks
+R/e.sc/t.sc¹𝐶𝑢 1º. Similarly, we colour the retrieved chunks based on the LCP in the sampled chunk. For the
+sample in Table 6, for which we chose the prompt, we observe that the retrieved chunks inﬂuence the
+sample as there are overlaps between the sampled tokens and neighbour tokens. Overall, retrieval
+reduces hallucinations (in line with the ﬁndings of Shuster et al. (2021)) and makes the model more
+knowledgeable, when comparing with samples produced with retrieval disabled. In the sample in
+Table 7, the model recognises that the prompt is the beginning of the ﬁrst scene of Hamlet and
+leverages retrieval data to continue it with only a few mistakes. We provide further examples in
+Appendix E, including examples from the evaluation sets, as well as the detailed procedure used for
+colouring the tables.
+5. Conclusion
+We present Retrieval-Enhanced Transformers ( R/e.sc/t.sc/r.sc/o.sc), a method for modelling arbitrary text se-
+quences whilstretrievingfromdatabaseswithtrillions oftokens—scalingthedataavailable to models
+by an order of magnitude compared to what is typically consumed during training. R/e.sc/t.sc/r.sc/o.scmodels
+15
+
+Improving language models by retrieving from trillions of tokens
+gains do not diminish for models with up to at least 7B parameters, and correspond to non-retrieval
+models with 10more parameters on certain datasets. On Wikitext103 and the Pile, R/e.sc/t.sc/r.sc/o.scoutper-
+forms previous models trained on large scale datasets. We also show that R/e.sc/t.sc/r.sc/o.scis competitive on
+retrieval-intensive downstream tasks such as question answering.
+R/e.sc/t.sc/r.sc/o.scmodels are ﬂexible and can be used without retrieval at evaluation and still achieve
+comparable performance to baseline models. Conversely, baseline models can be rapidly ﬁne-tuned
+intoR/e.sc/t.sc/r.sc/o.scmodelstoobtainnearlythesameperformanceasiftrainedfromscratch. Carefulanalysis
+shows that only a modest fraction of the gains obtained by R/e.sc/t.sc/r.sc/o.scare due to test set leakage. In
+general, we caution for such leakage in large-scale language datasets and suggest further work in
+better understanding the role of test set leakage in the performance of large-scale language models.
+Overall, our work demonstrates at an unprecedented scale that semi-parametric approaches can
+provide an orthogonal, more eﬃcient approach than raw parameter scaling as we seek to build more
+powerful language models.
+Acknowledgements
+We would like to thank Nikolai Grigorev, Marc’aurelio Ranzato, Cyprien de Masson d’Autume, Po-Sen
+Huang,JohannesWelbl,LisaAnneHendricks,EthanPerez,JeﬀStanway,EricNoland,GregoryWayne,
+John Jumper, Julian Schrittwieser, Lorrayne Bennett, Devang Agrawal, Dani Yogatama, Susannah
+Young, Nando de Freitas, Demis Hassabis, and Koray Kavukcuoglu for their help, advice and reviews.
+Additionally, we would like to thank Zonglin Li, David Simcha, and the ScaNN developers for their
+help.
+16
+
+Improving language models by retrieving from trillions of tokens
+Table 6jSample - Beavers are interesting animals . The R/e.sc/t.sc/r.sc/o.sc[O/f.sc/f.sc] sample quickly diverges to other
+animalswhilethe R/e.sc/t.sc/r.sc/o.sc[O/n.sc] sampletendstostayfocusedonthebeavertopicduetoneighbourconditioning.
+Prompt and sample of R/e.sc/t.sc/r.sc/o.sc[O/f.sc/f.sc] Prompt and sample of R/e.sc/t.sc/r.sc/o.sc[O/n.sc] »𝑁1𝑢𝐹1𝑢¼colored by LCP with 𝐶𝑢¸1»𝑁2𝑢𝐹2𝑢¼colored by LCP with 𝐶𝑢¸1
+colored by LCP with R/e.sc/t.sc¹𝐶𝑢 1º
+LCP=0,1,2,3,4,>5 LCP=0,1,2,3,4,>5 LCP=0,1,2,3,4,>5
+Beavers are interesting animals that Beavers are interesting animals that .Beaversbuildtheirlodgesinpon naw them into smaller sections andd
+live near rivers. They build live near rivers. They build ds they have created inwooded areas rag them into thewater.Engineers
+.Like many things innature,there ofthePondBeaversare interesting
+is a connection between creatures i animals because they change thehab
+nthewild.Beaverponds cause tree itatinwhich they live.Beaversdo
+s todrown,butthedeadtreesattra this by blocking upstreamstocreat
+ctthegreat blue heron ,which often e ponds.Then they buildtheirhomes
+return year after year .Over time , , calledlodges, inthese ponds .Bea
+abeaverpond can attract more than vers’ bodies make them well-suited f
+50 nestsina colony, calleda rooke or underwater building Special muscl
+ry.An example of this can befound es close oﬀ theirnoses,ears, and
+inthelarge pond oﬀ Bradford Road throatstokeepthewater out .Beave
+at Carter Fields near theBoxford l rs’ broadtailsact like rudders for
+ine.Chris Leahy ,an expert with th steering.Their two very large ,ora
+eMassachusetts Audubon Society who nge front teethare used tognawdow
+wrote ntrees.Theybegin building theird
+am
+dams to create ponds. Frogs are am theirhousescalled beaverdamsin,thentheymeanthatyouare verybar-like tail , andtwo protruding tee
+phibians, so they can live in both l theriverbeds .Theyalsoliveon lan usy.Beaversswim easily in streams ,th that are strong enoughtognawdo
+and and water. They have great camou d.Beaversusetheirstrongteeth an picking up rocksandstickstobuil wntrees. Thebeaverusestrees,bra
+ﬂage to hide from predators. The G dstrong jaws tocutdowntreesand dtheirdams.Theygnawattreeswit nches, andmudtobuilddams across
+olden Retriever, or Golden, is a ver branches to buildtheirhomes.They htheirbig front teethtocutthem riversandstreams.These dams creat
+y big dog. They are very strong, and also usetheir teeth and jawstoche down.Thenthey usepartsof the tre eadeep pool ofwater in which the
+have a thick coat to help them live wupfood.Beaversusetheirbig,ﬂes tobuildtheirhouses.Beavers ar beaverbuilds its home .Abeaverhom
+in attails toswim.Theyuse eclever builders .Theyknow exactly eis calledalodge.A babybeavero
+whattheyneedtobuildtheir beave r “kit” remains in thefamilylodge
+rdams.Theyusemud from thestream untiltheageoftwo.Beaverfur,kn
+tomaketheirdams stay together .Town as pelt ,was once highly popular
+heyusetheirtailstopat down the asatrim for hats andcoats.How m
+mud.Beaversputasnug room at the ightthepopularity of beaverfur co
+topof theirdams for theirbabies. ntributed to thecolonization ofNew
+Theystoretheirfood underwater .Be York?wwwWw
+averseatthebark from the
+cold areas. A kangaroo is an anima theirsharpteethto gnaw atrocks , thentheymean that you are very b w attreeswiththeirbig front teet
+l that is very large. It can jump ve andcut trees. Theyusetheirﬂattusy.Beaversswimeasily in streams, hto cutthemdown.Thentheyusepa
+ry high. They can run very fast. A ailstosteer when they areswimming pickinguprocksandstickstobuil rts of the trees to buildtheirhous
+meerkat is a small animal that lives .Inthewinter, beavers havetobui dtheirdams.Theygnaw attreeswit es.Beavers are clever builders .The
+in Africa. They live in colonies of ldahousecalledabeaverlodge. Th htheirbig front teethto cutthem yknow exactly what theyneedtobui
+up to a hundred of them. They can c eybuild ahousethat is very strong down.Thentheyuseparts of the tre ldtheirbeaver dams .Theyusemud f
+limb trees very easily. .Thewallsaremadeoftwigs.Theres tobuildtheirhouses.Beavers ar romthestreamtomaketheirdams st
+oofismade e clever builders .Theyknow exactly ay together .Theyusetheirtailsto
+whattheyneedtobuildtheirbeave pat down themud.Beavers put a snu
+r dams.Theyusemud from thestream g room at thetopoftheirdams for
+tomaketheirdams stay together .Ttheirbabies.Theystoretheirfood
+heyusetheirtailstopat down the underwater .Beavers eat thebark fro
+mud.Beavers put a snug room at the mthe trees thatthey cutdown!1. W
+topoftheirdams for theirbabies. hat isthemain idea of theﬁrst pa
+Theystoretheirfood underwater .Be ragraph?.2. What is themain idea o
+avers eat thebark from the f thesecond paragraph?
+A mouse is a small mammal that lives ofbranches andother tree parts.T
+on land. It is a very good climber heyalsousetheirstrong jaws tocu
+and it can run very fast. Penguins ttrees.Theybringthem to their ho
+are birds that live on Antarctica. T use.Theyalsousetheirsharpteeth
+hey have a thick coat to keep them w tochewup thetreeparts.Theyuse
+arm. Rabbits are small animals that theirﬂattailstoswim to the top
+live in the ground. They oftheirhouse.Thentheyusetheir
+teeth and jawstochewup thetree
+17
+
+Improving language models by retrieving from trillions of tokens
+Table 7jSample - Hamlet, Act 1, Scene 1. TheR/e.sc/t.sc/r.sc/o.sc[O/f.sc/f.sc] sample has correct syntax but is hallucinated,
+and ends with repetition of one character ( FRANCISCO Approach me not ). The R/e.sc/t.sc/r.sc/o.sc[O/n.sc] sample is the
+correct continuation of the original text, and is robust to formatting diﬀerences between our prompt and the
+retrieved data.
+Prompt and sample of R/e.sc/t.sc/r.sc/o.sc[O/f.sc/f.sc] Prompt and sample of R/e.sc/t.sc/r.sc/o.sc[O/n.sc] »𝑁1𝑢𝐹1𝑢¼colored by LCP with 𝐶𝑢¸1»𝑁2𝑢𝐹2𝑢¼colored by LCP with 𝐶𝑢¸1
+colored by LCP with R/e.sc/t.sc¹𝐶𝑢 1º
+LCP=0,1,2,3,4,>5 LCP=0,1,2,3,4,>5 LCP=0,1,2,3,4,>5
+ACT I SCENE I. Elsinore. A pla ACT I SCENE I. Elsinore. A pla ACTISCENEI.Elsinore.A pla ><TEXT>ACT ISCENEI.Elsin
+tform before the castle. FRANC tform before the castle. FRANC tform before thecastle.(FRAN ore.A platform before thecas
+ISCO at his post. Enter to him ISCO at his post. Enter to him CISCO athis post.Entertohi tle.FRANCISCOathis post.E
+BERNARDO BERNARDO Who’s there BERNARDO BERNARDO Who’s there mBERNARDO)BERNARDOWho’s the ntertohimBERNARDOBERNARDO
+? FRANCISCO Nay, answer me: st ? FRANCISCO Nay, answer me: st re? FRANCISCONay,answer me : Who’s there ? FRANCISCONay,an
+and, and unfold yourself. BERN and, and unfold yourself. BERN stand,and unfold yourself .BE swer me:stand,and unfold you
+ARDO ARDO RNARDOLonglivetheking! FRA rself.BERNARDOLonglivethe
+NCISCO Bernardo? BERNARDO He. king! FRANCISCO Bernardo? BERN
+FRANCISCO You come most carefu ARDO He. FRANCISCO You come mo
+lly upon your hour. BERNARDO ’ st carefully upon your hour. B
+Tis now struck twelve; get the ERNARDO ’Tis now struck twelve
+e to bed, Francisco. FRANCISCO ; get thee to bed, Francisco.
+For this relief much thanks: FRANCISCO For this relief much
+’tis bitter cold, And I am sic thanks: ’tis bitter cold, And
+k at heart. B ERNARDOHave you I am sick at heart.
+Who calls ? FRANCISCO I am th Longlivetheking! FRANCISCO Long live the king ! FRANCISCO live the king ! FRANCISCOBern
+e lord here; I, Francisco, tha Bernardo? BERNARDO He. FRANCI Bernardo ? BERNARDOHe.FRANCI ardo? BERNARDOHe.FRANCISCOY
+t am sick of grief. [ Aside. B SCO You come most carefully up SCOYou come most carefully up ou come most carefully upon yo
+ERNARDO The king ! FRANCISCO I on your hour. BERNARDO ’Tis no on your hour .BERNARDO’Tis no ur hour.BERNARDO’Tis now str
+am sick of that also. BERNARD w struck twelve; get thee to b w struck twelve; get thee to b uck twelve: get thee to bed ,F
+O My lord ? FRANCISCO Do not a ed, Francisco. FRANCISCO For t ed,Francisco .FRANCISCOFor t rancisco.FRANCISCOFor this r
+pproach me. BERNARDO his relief much thanks: ’tis b his relief much thanks: ’tis b elief much thanks: ’tis bitter
+itter cold, And I am sick at h itter cold ,AndIam sick at h cold,AndIam sick at heart .
+eart. B eart.</TEXT></DOC><DOC><DO BERNARDOHaveyou had quiet g
+CNO>romeo</DOCNO><TEXT>ACT Iuard? FRANCISCO Not a mouse st
+PROLOGUE Two households ,bo irring. BERNARDO Well, good ni
+th alike in dignity ,In fair V ght. IfyoudomeetHoratioand
+erona,where we lay our scene , Marcellus, The rivals 2ofmy
+From ancient grudge break to watch,bid them make haste. FR
+new mutiny , ANCISCO I think I hear them .—
+Stand,ho!who is there? EN
+Francisco, I would speak with ERNARDOHaveyou had quiet gua had quiet guard ?FRANCISCONo ARDO Have youhad quiet guard ?
+you. FRANCISCO Approach me not rd? FRANCISCO Not a mouse stir t a mouse stirring .BERNARDO W FRANCISCONot a mouse stirrin
+, but speak. BERNARDO Your han ring. BERNARDO Well, good nigh ell, goodnight.Ifyoudo mee g.BERNARDO Well , goodnight.
+d, your voice FRANCISCO I will t. Ifyou domeetHoratioand t Horatio andMarcellus ,The r Ifyou do meet Horatio andMarc
+not hear thee speak. BERNARDO Marcellus, The rivals ofmywa ivals ofmywatch,bid them ma ellus,The rivals2 of mywatch
+Francisco, your hand, I entre tch,bid them make haste. FRAN ke haste.FRANCISCOI think I ,bid them make haste .FRANCIS
+at thee. FRANCISCO Approach me CISCO I think I hear them . Sta hear them .Stand,ho!Who’s th COI think I hear them.— Stand
+not. BERNARDO Francisco FRANC nd,ho!who is there? Enter ere?(EnterHORATIOandMARCEL ,ho! who is there ?ENTERHORA
+LUS)HORATIOFriendsto this g TIOANDMARCELLUS. HORATIOFri
+round. MARCELLUS And liegemen endsto this ground. MARCELLUS
+to the Dane. FRANCISCO Give yo And liegemen to the Dane .3FR
+u good night. MARCELLUS O, far ANCISCOGiveyougood night. M
+ewell, honest soldier: Who hat ARCELLUS O, farewell, honest s
+h relieved you? FRANCISCO Bern oldier: Who hath relieved you?
+ardohasmyplace.Giveyou go FRANCISCO Bernardo hath my pl
+od night. (Exit ace. Give you good night
+ISCO Approach me not. BERNARDO HORATIOandMARCELLUS HORATIO
+I have a letter FRANCISCO App Friendsto this ground. MARCE
+roach me not. BERNARDO For the LLUS And liegemen to the Dane.
+king. FRANCISCO Approach me n FRANCISCO Give you good night
+ot. BERNARDO There’s no treaso . MARCELLUS O, farewell, hones
+n in’t. FRANCISCO Approach me t soldier: Who hath relieved y
+not. BERNARDO I will ou? FRANCISCO Bernardo hath my
+place. Give you good night.
+18
+
+Improving language models by retrieving from trillions of tokens
+References
+M. Abadi, A. Chu, I. Goodfellow, H. B. McMahan, I. Mironov, K. Talwar, and L. Zhang. Deep learning
+with diﬀerential privacy. In ACM SIGSAC Conference on Computer and Communications Security ,
+2016.
+S. Ahn, H. Choi, T. Pärnamaa, and Y. Bengio. A neural knowledge language model. arXiv preprint
+arXiv:1608.00318 , 2016.
+A.BaevskiandM.Auli. Adaptiveinputrepresentationsforneurallanguagemodeling. In International
+Conference on Learning Representations , 2019. URL https://openreview.net/forum?id=
+ByxZX20qFQ .
+Y. Belinkov, S. Gehrmann, and E. Pavlick. Interpretability and analysis in neural NLP. In Proceedings
+of the 58th Annual Meeting of the Association for Computational Linguistics: Tutorial Abstracts ,
+pages 1–5, Online, July 2020. Association for Computational Linguistics. doi: 10.18653/v1/2020.
+acl-tutorials.1. URL https://aclanthology.org/2020.acl-tutorials.1 .
+E. M. Bender, T. Gebru, A. McMillan-Major, and S. Shmitchell. On the dangers of stochastic parrots:
+Can language models be too big? In ACM Conference on Fairness, Accountability, and Transparency ,
+2021.
+D. M. Blei, A. Y. Ng, and M. I. Jordan. Latent Dirichlet Allocation. Journal of Machine Learn-
+ing Research , 3(Jan):993–1022, 2003. URL https://jmlr.csail.mit.edu/papers/v3/
+blei03a.html .
+J. Bradbury, R. Frostig, P. Hawkins, M. J. Johnson, C. Leary, D. Maclaurin, G. Necula, A. Paszke, J. V.
+der Plas, S. Wanderman-Milne, and Q. Zhang. JAX: composable transformations of Python+NumPy
+programs, 2018. URL http://github.com/google/jax .
+T. Brants, A. C. Popat, P. Xu, F. J. Och, and J. Dean. Large Language models in machine translation.
+InJoint Conference on Empirical Methods in Natural Language Processing and Computational Natural
+Language Learning , pages 858–867, 2007.
+T.Brown,B.Mann,N.Ryder,M.Subbiah,J.D.Kaplan,P.Dhariwal,A.Neelakantan,P.Shyam,G.Sastry,
+A.Askell,S.Agarwal,A.Herbert-Voss,G.Krueger,T.Henighan,R.Child,A.Ramesh,D.Ziegler,J.Wu,
+C.Winter,C.Hesse,M.Chen,E.Sigler,M.Litwin,S.Gray,B.Chess,J.Clark,C.Berner,S.McCandlish,
+A. Radford, I. Sutskever, and D. Amodei. Language models are few-shot learners. In Advances
+in Neural Information Processing Systems , 2020. URL https://proceedings.neurips.cc/
+paper/2020/file/1457c0d6bfcb4967418bfb8ac142f64a-Paper.pdf .
+N. Carlini, F. Tramer, E. Wallace, M. Jagielski, A. Herbert-Voss, K. Lee, A. Roberts, T. Brown, D. Song,
+U. Erlingsson, A. Oprea, and C. Raﬀel. Extracting training data from large language models.
+Preprint, 2021.
+C. Consonni, D. Laniado, and A. Montresor. Wikilinkgraphs: a complete, longitudinal and multi-
+language dataset of the wikipedia link networks. In AAAI International Conference on Web and
+Social Media , volume 13, 2019.
+Curation. Curation corpus base, 2020.
+Z.Dai,Z.Yang,Y.Yang,J.Carbonell,Q.Le,andR.Salakhutdinov. Transformer-XL:Attentivelanguage
+models beyond a ﬁxed-length context. In Annual Meeting of the Association for Computational
+Linguistics , July 2019. URL https://aclanthology.org/P19-1285 .
+19
+
+Improving language models by retrieving from trillions of tokens
+J.Devlin,M.-W.Chang,K.Lee,andK.Toutanova.BERT:Pre-trainingofdeepbidirectionaltransformers
+for language understanding. In Conference of the North American Chapter of the Association for
+Computational Linguistics , June 2019. URL https://aclanthology.org/N19-1423 .
+L.Gao,S.Biderman, S.Black, L.Golding, T.Hoppe, C.Foster,J.Phang, H.He, A.Thite, N.Nabeshima,
+S. Presser, and C. Leahy. The Pile: An 800GB dataset of diverse text for language modeling. arXiv
+preprint arXiv:2101.00027 , 2020.
+S. Gehman, S. Gururangan, M. Sap, Y. Choi, and N. A. Smith. RealToxicityPrompts: Evaluating neural
+toxic degeneration in language models. In Conference on Empirical Methods in Natural Language
+Processing , Nov. 2020. URL https://aclanthology.org/2020.findings-emnlp.301 .
+E. Grave, A. Joulin, and N. Usunier. Improving neural language models with a continuous cache. In
+International Conference on Learning Representations , 2017. URL https://openreview.net/
+forum?id=B184E5qee .
+A. Graves. Generating sequences with recurrent neural networks. arXiv preprint arXiv:1308.0850 ,
+2013.
+J. Gu, Y. Wang, K. Cho, and V. O. Li. Search engine guided neural machine translation. In AAAI
+Conference on Artiﬁcial Intelligence , 2018.
+R. Guo, P. Sun, E. Lindgren, Q. Geng, D. Simcha, F. Chern, and S. Kumar. Accelerating large-scale
+inference with anisotropic vector quantization. In International Conference on Machine Learning ,
+2020. URL https://arxiv.org/abs/1908.10396 .
+K. Guu, K. Lee, Z. Tung, P. Pasupat, and M. Chang. Retrieval augmented language model pre-training.
+InInternational Conference on Machine Learning , 2020.
+H. Hashemi, H. Zamani, and W. B. Croft. Guided transformer: Leveraging multiple external sources
+for representation learning in conversational search. In Proceedings of the 43rd International ACM
+SIGIR Conference on Research and Development in Information Retrieval , pages 1131–1140, 2020.
+T. Hennigan, T. Cai, T. Norman, and I. Babuschkin. Haiku: Sonnet for JAX, 2020. URL http:
+//github.com/deepmind/dm-haiku .
+G. Izacard and E. Grave. Leveraging passage retrieval with generative models for open domain
+question answering. In Conference of the European Chapter of the Association for Computational
+Linguistics , Apr. 2021. URL https://aclanthology.org/2021.eacl-main.74 .
+G. Izacard, F. Petroni, L. Hosseini, N. De Cao, S. Riedel, and E. Grave. A memory eﬃcient baseline for
+open domain question answering. arXiv preprint arXiv:2012.15156 , 2020.
+S. Jain and B. C. Wallace. Attention is not Explanation. In Proceedings of the 2019 Conference of
+the North American Chapter of the Association for Computational Linguistics: Human Language
+Technologies, Volume 1 (Long and Short Papers) , pages 3543–3556, Minneapolis, Minnesota, June
+2019. Association for Computational Linguistics. doi: 10.18653/v1/N19-1357. URL https:
+//aclanthology.org/N19-1357 .
+E. S. Jo and T. Gebru. Lessons from archives: Strategies for collecting sociocultural data in machine
+learning. In Proceedings of the 2020 Conference on Fairness, Accountability, and Transparency , pages
+306–316, 2020.
+R. Jozefowicz, O. Vinyals, M. Schuster, N. Shazeer, and Y. Wu. Exploring the limits of language
+modeling. arXiv preprint arXiv:1602.02410 , 2016.
+20
+
+Improving language models by retrieving from trillions of tokens
+J. Kaplan, S. McCandlish, T. Henighan, T. B. Brown, B. Chess, R. Child, S. Gray, A. Radford, J. Wu,
+and D. Amodei. Scaling laws for neural language models. CoRR, 2020. URL https://arxiv.
+org/abs/2001.08361 .
+V. Karpukhin, B. Oguz, S. Min, P. Lewis, L. Wu, S. Edunov, D. Chen, and W.-t. Yih. Dense passage re-
+trievalforopen-domainquestionanswering. In ConferenceonEmpiricalMethodsinNaturalLanguage
+Processing , Nov. 2020. URL https://aclanthology.org/2020.emnlp-main.550 .
+U. Khandelwal, O. Levy, D. Jurafsky, L. Zettlemoyer, and M. Lewis. Generalization through memoriza-
+tion: Nearest neighbor language models. In International Conference on Learning Representations ,
+2020. URL https://openreview.net/forum?id=HklBjCEKvH .
+M. Komeili, K. Shuster, and J. Weston. Internet-augmented dialogue generation. arXiv preprint
+arXiv:2107.07566 , 2021.
+T. Kudo and J. Richardson. Sentencepiece: A simple and language independent subword tokenizer
+and detokenizer for neural text processing. arXiv preprint arXiv:1808.06226 , 2018.
+T. Kwiatkowski, J. Palomaki, O. Redﬁeld, M. Collins, A. Parikh, C. Alberti, D. Epstein, I. Polosukhin,
+M. Kelcey, J. Devlin, K. Lee, K. N. Toutanova, L. Jones, M.-W. Chang, A. Dai, J. Uszkoreit, Q. Le, and
+S. Petrov. Natural Questions: a benchmark for question answering research. Transactions of the
+Association of Computational Linguistics , 7:452–466, Mar. 2019. URL https://aclanthology.
+org/Q19-1026 .
+A. Lazaridou, A. Kuncoro, E. Gribovskaya, D. Agrawal, A. Liska, T. Terzi, M. Gimenez, C. de Mas-
+son d’Autume, S. Ruder, D. Yogatama, K. Cao, T. Kociský, S. Young, and P. Blunsom. Pitfalls of static
+language modelling. CoRR, 2021. URL https://arxiv.org/abs/2102.01951 .
+K. Lee, M.-W. Chang, and K. Toutanova. Latent Retrieval for Weakly Supervised Open Domain
+Question Answering. In Annual Meeting of the Association for Computational Linguistic , June 2019.
+URLhttp://arxiv.org/abs/1906.00300 .
+K. Lee, D. Ippolito, A. Nystrom, C. Zhang, D. Eck, C. Callison-Burch, and N. Carlini. Deduplicating
+training data makes language models better. arXiv preprint arXiv:2107.06499 , 2021.
+P. Lewis, E. Perez, A. Piktus, F. Petroni, V. Karpukhin, N. Goyal, H. Küttler, M. Lewis, W.-t. Yih,
+T.Rocktäschel,S.Riedel,andD.Kiela. Retrieval-augmentedgenerationforknowledge-intensiveNLP
+tasks. In Advances in Neural Information Processing Systems , 2020. URL https://proceedings.
+neurips.cc/paper/2020/file/6b493230205f780e1bc26945df7481e5-Paper.pdf .
+P. Lewis, P. Stenetorp, and S. Riedel. Question and answer test-train overlap in open-domain question
+answering datasets. In Conference of the European Chapter of the Association for Computational
+Linguistics , Apr. 2021. URL https://aclanthology.org/2021.eacl-main.86 .
+O. Lieber, O. Sharir, B. Lenz, and Y. Shoham. Jurassic-1: Technical details and evaluation. White Paper.
+AI21 Labs , 2021.
+I. Loshchilov and F. Hutter. Decoupled weight decay regularization. In International Conference on
+Learning Representations , 2019. URL https://openreview.net/forum?id=Bkg6RiCqY7 .
+S. Merity, C. Xiong, J. Bradbury, and R. Socher. Pointer sentinel mixture models. In International
+Conference on Learning Representations , 2017. URL https://openreview.net/forum?id=
+Byj72udxe .
+21
+
+Improving language models by retrieving from trillions of tokens
+T. Mikolov, M. Karaﬁát, L. Burget, J. Cernock `y, and S. Khudanpur. Recurrent neural network based
+language model. Interspeech , 2(3):1045–1048, 2010.
+D. Paperno, G. Kruszewski, A. Lazaridou, N. Q. Pham, R. Bernardi, S. Pezzelle, M. Baroni, G. Boleda,
+and R. Fernández. The LAMBADA dataset: Word prediction requiring a broad discourse context.
+InAnnual Meeting of the Association for Computational Linguistics , Aug. 2016. URL https://
+aclanthology.org/P16-1144 .
+A. Radford, J. Wu, R. Child, D. Luan, D. Amodei, and I. Sutskever. Language models are unsupervised
+multitask learners. Preprint, 2019.
+J. Rae, S. Borgeaud, T. Cai, K. Millican, J. Hoﬀmann, F. Song, J. Aslanides, S. Henderson, R. Ring,
+S. Young, E. Rutherford, T. Hennigan, J. Menick, A. Cassirer, R. Powell, G. van den Driessche, L. A.
+Hendricks, M. Rauh, P.-S. Huang, A. Glaese, J. Welbl, S. Dathathri, S. Huang, J. Uesato, J. Mellor,
+I. Higgins, A. Creswell, N. McAleese, A. Wu, E. Elsen, S. Jayakumar, E. Buchatskaya, D. Budden,
+E. Sutherland, K. Simonyan, M. Paganini, L. Sifre, L. Martens, X. L. Li, A. Kuncoro, A. Nematzadeh,
+E. Gribovskaya, D. Donato, A. Lazaridou, A. Mensch, J.-B. Lespiau, M. Tsimpoukelli, N. Grigorev,
+D. Fritz, T. Sottiaux, M. Pajarskas, T. Pohlen, Z. Gong, D. Toyama, C. de Masson d’Autume, Y. Li,
+T. Terzi, V. Mikulik, I. Babuschkin, A. Clark, D. de Las Casas, A. Guy, J. Bradbury, M. Johnson,
+B. Hechtman, L. Weidinger, I. Gabriel, W. Isaac, E. Lockhart, S. Osindero, L. Rimell, C. Dyer,
+O. Vinyals, K. Ayoub, J. Stanway, L. Bennett, D. Hassabis, K. Kavukcuoglu, and G. Irving. Scaling
+language models: Methods, analysis & insights from training Gopher. arXiv submission , 2021.
+C.Raﬀel,N.Shazeer,A.Roberts,K.Lee,S.Narang,M.Matena,Y.Zhou,W.Li,andP.J.Liu. Exploring
+the limits of transfer learning with a uniﬁed text-to-text transformer. Journal of Machine Learning
+Research, 21(140):1–67, 2020. URL http://jmlr.org/papers/v21/20-074.html .
+S. Rajbhandari, J. Rasley, O. Ruwase, and Y. He. Zero: Memory optimizations toward training trillion
+parameter models. In IEEE International Conference for High Performance Computing, Networking,
+Storage and Analysis , 2020.
+S.RobertsonandH.Zaragoza. Theprobabilisticrelevanceframework: BM25andbeyond. Foundations
+and Trends in Information Retrieval , 3:333–389, Jan 2009.
+D.S.Sachan,S.Reddy,W.Hamilton,C.Dyer,andD.Yogatama. End-to-endtrainingofmulti-document
+reader and retriever for open-domain question answering. arXiv preprint arXiv:2106.05346 , 2021.
+R. Schwartz, J. Dodge, N. A. Smith, and O. Etzioni. Green AI. Communications of the Association for
+Computing Machinery , 63(12):54–63, Nov. 2020.
+M. Shoeybi, M. Patwary, R. Puri, P. LeGresley, J. Casper, and B. Catanzaro. Megatron-LM: Training
+multi-billion parameter language models using model parallelism. CoRR, 2019. URL http:
+//arxiv.org/abs/1909.08053 .
+K. Shuster, S. Poﬀ, M. Chen, D. Kiela, and J. Weston. Retrieval augmentation reduces hallucination in
+conversation. arXiv:2104.07567 [cs] , Apr. 2021. URL http://arxiv.org/abs/2104.07567 .
+E. Strubell, A. Ganesh, and A. McCallum. Energy and policy considerations for deep learning in NLP.
+InAssociation for Computational Linguistics , July 2019. URL https://aclanthology.org/
+P19-1355 .
+A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, L. u. Kaiser,
+and I. Polosukhin. Attention is all you need. In Advances in Neural Information Pro-
+cessing Systems , 2017. URL https://proceedings.neurips.cc/paper/2017/file/
+3f5ee243547dee91fbd053c1c4a845aa-Paper.pdf .
+22
+
+Improving language models by retrieving from trillions of tokens
+X. Wei and W. B. Croft. LDA-based document models for ad-hoc retrieval. In ACM SIGIR International
+Conference on Research and Development in Information Retrieval , 2006. URL http://portal.
+acm.org/citation.cfm?doid=1148170.1148204 .
+L.Weidinger,I.Gabriel,C.Griﬃn,M.Rauh,J.Uesato,J.Mellor,W.Isaac,P.-S.Huang,L.A.Hendricks,
+M. Cheng, B. Balle, J. Haas, C. Biles, L. Rimell, W. Hawkins, M. Glaese, A. Kasirzadeh, Z. Kenton,
+S. Brown, A. Birhane, T. Stepleton, G. Irving, and S. Legassick. Ethical and social risks of harm
+from language models. arXiv submission , 2021.
+D. Yogatama, C. de Masson d’Autume, and L. Kong. Adaptive semiparametric language models.
+Transactions of the Association for Computational Linguistics , 9:362–373, 2021.
+B. Zhang and R. Sennrich. Root mean square layer normalization. In Advances in Neural Information
+Processing Systems , 2019. URL https://proceedings.neurips.cc/paper/2019/file/
+1e8a19426224ca89e83cef47f1e7f53b-Paper.pdf .
+J. Zhang, M. Utiyama, E. Sumita, G. Neubig, and S. Nakamura. Guiding neural machine translation
+with retrieved translation pieces. In Conference of the North American Chapter of the Association for
+Computational Linguistics , 2018.
+23
+
+Improving language models by retrieving from trillions of tokens
+A. Datasets
+We provide a full description of MassiveText and of our extract of recent Wikipedia articles.
+A.1. Full description of MassiveText
+The full break down of MassiveText by source and languages is given in Table 8. For a full description
+and analysis of MassiveText, see Rae et al. (2021).
+Source Language Token count (M) Documents Sampling weight
+WebEn 483,002 604,938,816 0.314
+Ru 103,954 93,004,882 0.033
+Es 95,762 126,893,286 0.033
+Zh 95,152 121,813,451 0.033
+Fr 59,450 76,612,205 0.033
+De 57,546 77,242,640 0.033
+Pt 44,561 62,524,362 0.033
+It 35,255 42,565,093 0.033
+Sw 2,246 1,971,234 0.0044
+Ur 631 455,429 0.0011
+Books En 3,423,740 20,472,632 0.25
+News En 236,918 397,852,713 0.1
+WikipediaEn 3,977 6,267,214 0.0285
+De 2,155 3,307,818 0.003
+Fr 1,783 2,310,040 0.003
+Ru 1,411 2,767,039 0.003
+Es 1,270 2,885,013 0.003
+It 1,071 2,014,291 0.003
+Zh 927 1,654,772 0.003
+Pt 614 1,423,335 0.003
+Ur 61 344,811 0.0001
+Sw 15 58,090 0.0004
+Github - 374,952 142,881,832 0.05
+Total - 5,026,463 1,792,260,998 1
+Table 8jMassiveText dataset. The ﬁnal column indicates the sampling weight for each dataset
+during training. For the retrieval database, the entire dataset is used, with the exception of books for
+which we use a sub-sample of 4%.
+A.2. Wikipedia September 2021
+We create an evaluation dataset consisting of 23 Wikipedia articles that were added or heavily edited
+in September 2021, after we collected our training dataset. In addition, we ﬁlter out articles that rely
+too heavily on templated content, using the method detailed in §2.6 to identify articles with chunks
+that have a high overlap with their neighbours. Fig. 10 show that little overlap remains between our
+test dataset and the retrieved neighbours from the training dataset. The full list of included articles is
+given in Table 9.
+24
+
+Improving language models by retrieving from trillions of tokens
+Table 9jFull set of articles included in our Wikipedia Sept. 2021 evaluation dataset.
+Megan Rohrer Aakashavaani
+Emma Raducanu Junior Eurovision Song Contest 2021
+Ambra Sabatini Pavilion Bukit Jalil
+WhyDonate Blake Desjarlais
+The Juggernaut (company) 2021 All-Ireland Senior Football Championship Final
+Angela Diaz Drift-barrier hypothesis
+2020 Summer Paralympics Venomics
+2021 Afghan protests Great Circle (novel)
+Rexh Xhakli Hurricane Ida
+Julia Laskin 2021 Montenegrin episcopal enthronement protests
+Cuijk At War With the Silverﬁsh
+Ghoubet Wind Power Station
+We ﬁrst parse articles using mwparserfromhell5. We then remove sections with the following
+titles: “references”,“externallinks”,“sources”,“furtherreading”,“seealso”,“citations”,and“note”. In
+the remaining sections, we remove Wikilinks and remove the following templates: “reﬂist”, “notelist”,
+“notelist-ua”, “notelist-lr”, “notelist-ur”, and “notelist-lg”. We also exclude objects with the “ref” or
+“table” tag and clean the remaining text with the strip_code function. Finally, we concatenate the
+title and all the sections and use \n\nto delimitate them.
+B. Details on the retrieval architecture
+Wegivedetailsonthe R/e.sc/t.sc/r.sc/o.scarchitecture,andontheﬁne-tuningprocedureweusefor R/e.sc/t.sc/r.sc/o.scﬁtting
+existing language models.
+B.1. R/e.sc/t.sc/r.sc/o.scarchitecture and implementation
+B.1.1. Feed-forward architecture
+Asmentionedinthemaintext,theoverallencoder-decoderarchitectureisfullyfeed-forward. Westart
+with a sequence 𝑋2𝕍𝑛=¹𝐶𝑢º16𝑢6𝑙, and its pre-computed neighbours ¹R/e.sc/t.sc¹𝐶𝑢ºº16𝑢6𝑙and returns
+logits in ℝ𝑛j𝕍j. Along with A/t.sc/t.sc/n.sc,F/f.sc/w.sc,C/c.sc/a.scandC/a.scoperators introduced in the main text, we
+deﬁne the decoder embedding layer E/m.sc/b.sc :𝕍𝑛!ℝ𝑛𝑑, the S/p.sc/l.sc/i.sc/t.scoperator that extracts chunked
+intermediary embeddings S/p.sc/l.sc/i.sc/t.sc¹𝐻º,¹𝐻𝑢º16𝑢6𝑙2ℝ𝑙𝑚𝑑and the read-out layer R/e.sc/a.sc/d.sc :ℝ𝑛𝑑!
+ℝ𝑛j𝕍j. We then describe the forward pass in Algorithm 1. In addition to the usual Transformer ones,
+R/e.sc/t.sc/r.sc/o.scarchitecture hyperparameters involves the layer indices 𝑃encand𝑃, at which the encoder and
+the decoder perform cross-attention.
+B.1.2. Relative positional encoding in the chunked cross-attention layer
+TheC/a.scoperator uses relative positional logits, that are computed from a speciﬁc relative distance
+separatingdatatokensfromretrievaltokens. Indeed,weexpectanyretrievalneighbour R/e.sc/t.sc¹𝐶𝑢º𝑗and
+the chunk 𝐶𝑢to be relatively well aligned, and assume that they start at the same position. Therefore,
+when computing C/a.sc¹𝐻¸
+𝑢𝐸𝑢º, we set the distance between the data token 𝑖2»1𝑙¼of chunk𝐶¸
+𝑢and
+5https://github.com/earwig/mwparserfromhell
+25
+
+Improving language models by retrieving from trillions of tokens
+the retrieval token 𝑖02»12𝑙¼ofR/e.sc/t.sc¹𝐶𝑢º𝑗to be
+𝑑¹𝑖𝑖0º,𝑖 𝑖0¸𝑙 1 (6)
+When computing the encoder cross-attentions C/a.sc¹R/e.sc/t.sc¹𝐶𝑢º𝑗𝐻𝑢º, we set the distance between the
+retrieval token 𝑖02»12𝑙¼and the data token 𝑖2»1𝑙¼to be
+𝑑enc¹𝑖0𝑖º,𝑖0 𝑖 (7)
+Positional logits are obtained as a linear transform of a cosine vector computed from ¹𝑑¹𝑖𝑖0ºº𝑖𝑖0, and
+are added to content logits, as in a regular self-attention block.
+B.1.3. Chunked cross-attention implementation
+Our implementation of the C/c.sc/a.scoperator, shown in Listing 1, is based on a vectorized application of
+a cross-attention layer. For simplicity, we omit the multi-head attention logic and use the simplest
+Q,K,V attention. We omit relative positional logits computation, described above.
+B.1.4. Optional sharing of embedding matrices
+Weusedisjointembeddingsfortheencoderanddecoderbydefault, whichallowsustouseadiﬀerent
+dimensionality for the encoder (typically kept at 𝑑E/n.sc/c.sc=896ºand for the decoder (that we scale up
+to𝑑=8192). It is possible to share the embeddings, with little diﬀerence in training, as we show in
+the ablation section.
+B.2. Baseline to R/e.sc/t.sc/r.sc/o.scmodel ﬁne-tuning
+As shown in Fig. 5, we found that we were able to take a pre-trained baseline transformer and add
+R/e.sc/t.sc/r.sc/o.scthroughﬁne-tuning. Inallcases, wefrozeallweightsfrompre-trainingandfreshlyinitialised
+the retrieval encoder and cross-attention weights. In all cases, the cross-attention is added every third
+layer starting at layer six. The learning rate for the three smaller models was set to 210 4and
+half that for the larger model. We experimented with allowing the entire model to resume training
+during ﬁne-tuning but consistently found that the best approach was to freeze the pre-trained model.
+This kept the retrieval-oﬀ performance frozen whereas when all weights were tuned the retrieval oﬀ
+performance would degrade.
+C. Training details and hyperparameters
+We provide the hyperparameters used in the various experiments of §4.
+C.1. Language model pre-training
+In Table 10, we show the hyperparameters of the diﬀerent models we train. In all cases, we train for
+419,430,400,000 training tokens. The three smaller models are trained with a batch size of 256 and
+the largest model is trained with a batch size of 1024. The minimum learning rate is set to 0.1 times
+the maximum learning rate, which is shown in Table 10. The learning rate is decayed using a cosine
+cycle length that matches the total number of training tokens. All models are trained using AdamW
+(Loshchilov and Hutter, 2019) with a weight decay parameter of 0.1. The learning rate linearly
+increases from 10 7to the maximum learning rate over the ﬁrst 750 steps of training. All models use
+ZeRO to shard the optimiser state (Rajbhandari et al., 2020). Additional infrastructure details can be
+found in Rae et al. (2021).
+26
+
+Improving language models by retrieving from trillions of tokens
+Listing 1jJax implementation of the chunked cross attention , simpliﬁed.
+n = 128 # Sequence length
+m = 16 # Chunk length
+r = 32 # Retrieval length
+k = 4 # Number of neighbours
+d = 16 # Embedding size
+l = n // m # Number of chunks
+# Parameters
+Q = jnp.zeros((d, d))
+K = jnp.zeros((d, d))
+V = jnp.zeros((d, d))
+def relative_positional_encodings(attending_length, attended_length):
+# Classical relative positional encodings
+...
+def cross_attention(chunk, neighbour):
+m, d = chunk.shape
+r, d = neighbour.shape
+queries = chunk @ Q
+keys = neighbour @ K
+logits = queries @ keys.T
+values = neighbour @ V
+return logits, values
+def multi_neighbour_cross_attention(chunk, neighbours):
+m, d = chunk.shape
+k, r, d = neighbours.shape
+logits, values = jnp.vectorize(cross_attention,
+signature=’(m,d),(r,d)->(m,r),(r,d)’)(
+chunk, neighbours)
+assert logits.shape == (k, m, r)
+assert values.shape == (k, r, d)
+logits += relative_positional_encodings(m, r)[None, :, :]
+logits = jnp.moveaxis(logits, 0, -1).reshape((m, r *k))
+values = jnp.moveaxis(values, 0, 1).reshape((r *k, d))
+return jax.nn.softmax(logits) @ values
+def multi_chunk_cross_attention(observation, neighbours):
+attending_chunks = jnp.pad(observation[m-1:],
+((0, m - 1), (0, 0)),
+mode=’constant’).reshape(l, m, d)
+chunked_output = jnp.vectorize(multi_neighbour_cross_attention,
+signature=’(m,d),(k,r,d)->(m,d)’)(
+attending_chunks, neighbours)
+assert chunked_output.shape == (l, m, d)
+output = jnp.pad(chunked_output.reshape(n, d),
+((m - 1, 0), (0, 0)),
+mode=’constant’)[:n]
+return output
+observation = jnp.zeros((n, d)) # Input
+neighbours = jnp.zeros((l, k, r, d))
+h = multi_chunk_cross_attention(observation, neighbours)
+assert h.shape == (n, d) # Output
+27
+
+Improving language models by retrieving from trillions of tokens
+Table 10jR/e.sc/t.sc/r.sc/o.scmodel hyperparameters , along with the size of the decoder.
+Baseline 𝑑𝑚𝑜𝑑𝑒𝑙𝑑𝑓𝑓𝑤 #heads Head size #layers 𝑃 𝑃 E/n.sc/c.scMax LR
+247M 896 3584 16 64 12 »6912¼ » 1¼210 4
+564M 1536 6144 12 128 12 »6912¼ » 1¼210 4
+1,574M 2048 8192 16 128 24 »912 24¼ » 1¼210 4
+7,505M 4096 16384 32 128 32 »912 32¼ » 1¼110 4
+Table 11jHyperparameters for the Wikitext103 experiments presented in Table 4. We use the same
+learning rate schedule for the baseline and the R/e.sc/t.sc/r.sc/o.sc-ﬁtting. For R/e.sc/t.sc/r.sc/o.sc-ﬁtting, we reset the
+schedule i.e. the schedule starts from step 0, not from step 35,000.
+Model Number of layers 18
+𝑑 1024
+𝑑F/f.sc/w.sc 4096
+Key size 64
+Value size 64
+Number of heads 16
+Training data Dataset Wikitext103train
+Sequence length 3072
+Batch size 128
+Tokenizer vocabulary size 128,000
+Optimisation optimiser Adam
+Adam’s𝛽1 0.9
+Adam’s𝛽2 0.95
+Adam’s𝜀 1e-8
+Dropout rate 0.25
+Schedule Learning rate start 1e-7
+Learning rate max 2.5e-4
+Learning rate min 2e-5
+Warmup steps 4,000
+Cosine cycle steps 100,000
+Evaluation Overlapping proportion 87.5 %
+C.2. Wikitext103 comparison
+WeprovidemoredetailsonourWikitext103resultspresentedin§4.1andTable4. Wetrainabaseline
+transformer on the Wikitext103 training set with the hyperparameters presented in Table 11. The
+learning rate ramps linearly from 110 7to2510 4in the ﬁrst 4,000 steps, then decays to
+210 5at 100,000 steps using a cosine schedule. The baseline checkpoint at step 35,000 has the
+lowest perplexity on Wikitext103 valid, of 2158, for overlapping proportion of 75% (sliding window
+evaluation that only uses probabilities for tokens that have at least 75% of the sequence length of
+context, when available). We use this checkpoint for all our baseline and 𝑘NN-LMnumbers reported
+in Table 4, except that Table 4 reports for an overlapping proportion of 87.5 %, which slightly lowers
+the perplexity of our baseline to 21.53 on Wikitext103 valid.
+We also use the 35,000 step baseline checkpoint as initialization for a R/e.sc/t.sc/r.sc/o.scﬁt, which otherwise
+uses the same optimiser and schedule hyperparameters but only trains the new retrieval weights, as
+explained in §4.2. Our best R/e.sc/t.sc/r.sc/o.scﬁt checkpoint has a Wikitext103 valid perplexity 1846, when
+retrieving from Wikipedia. We use this R/e.sc/t.sc/r.sc/o.sccheckpoint in Table 4 for all other retrieval sets. The
+evaluation curves for our baseline and R/e.sc/t.sc/r.sc/o.scﬁt is shown if Fig. 7 (left). In this particular case,
+28
+
+Improving language models by retrieving from trillions of tokens
+because Wikitext103 is quite small, training a R/e.sc/t.sc/r.sc/o.scmodel from scratch led to weaker results than
+the baseline, at least when retrieving from Wikipedia, as we couldn’t ﬁnd an eﬀective way to mitigate
+the increased over-ﬁtting due to the additional weights of R/e.sc/t.sc/r.sc/o.sc.
+We also re-implement 𝑘NN-LMusing the same tokenizer and dataset that we use for our base-
+line and R/e.sc/t.sc/r.sc/o.scﬁtting experiments. 𝑘NN-LMhas probabilities 𝑝𝑘NN-LM =𝜆𝑝𝐿𝑀¸¹1 𝜆º𝑝𝑘𝑁𝑁with
+𝑝𝑘𝑁𝑁¹𝑛𝑘º/exp¹ 𝛼𝑑𝑘º. To tune𝜆and𝛼, we begin with 𝛼=00012, which corresponds to the inverse
+of the standard deviation of the norm of the embeddings that we use as keys and queries for 𝑘NN-LM.
+We ﬁnd the best 𝜆=0118. We then ﬁnd the best 𝛼=000785for that value of 𝜆. Fig. 7 center and
+right respectively show the perplexity of 𝑘NN-LM as a function of 𝜆and𝛼.
+0 20 40 60 80
+1,000 steps18202224Wikitext103Valid perplexity 104
+103
+102
+101
+alpha18202224
+0.0 0.2 0.4
+lambda18202224
+Baseline RETROfit kNN-LM
+Figure 7jWikitext103valid perplexities. Left:Baseline and R/e.sc/t.sc/r.sc/o.scﬁt (initialized from baseline’s
+checkpoint at 35,000 steps) perplexities as a function of training steps. Center and right: 𝑘NN-LM
+perplexity as a function of 𝜆(for𝛼=00012) and𝛼(for𝜆=012) respectively.
+C.3. R/e.sc/t.sc/r.sc/o.scﬁtting baseline models experiments
+In Table 12, we give the hyperparameters used for R/e.sc/t.sc/r.sc/o.scﬁtting the models on Massive Text.
+Table 12jHyperparameters for the R/e.sc/t.sc/r.sc/o.scﬁtting experiments
+Model Layers with R/e.sc/t.sc/r.sc/o.sc-block (𝑃) Learning rate Batch size
+172M Every 3rdfrom 6 210 4!210 5256
+425M Every 3rdfrom 6 210 4!210 5256
+1.5B Every 3rdfrom 6 210 4!210 5256
+7.5B Every 3rdfrom 6 110 4!110 5256
+C.4. Question answering experiments
+We ﬁne-tune our 7.5B R/e.sc/t.sc/r.sc/o.scmodel for 25,000 steps, using a batch size of 128, a learning rate
+cosine scheduled from 10 6to10 7, with a linear ramp of 750 steps. We use dropout in the decoder
+only, as it performs better than using dropout in both the encoder and the decoder. Each neighbour
+is formatted as title: {title}, source: {source} . We use the top 20 neighbours from
+D/p.sc/r.scwhen training and evaluating.
+29
+
+Improving language models by retrieving from trillions of tokens
+Table 13jPerformance of R/e.sc/t.sc/r.sc/o.scfor diﬀerent variants. Model performance on C4 evaluation set,
+measured in bytes-per-bits, for a 247M parameter model trained with a 157 billion token schedule.
+Ablation group Ablation C4 eval bpb
+Model R/e.sc/t.sc/r.sc/o.sc 0.822
+No query conditioning 0.829
+No CA positional encodings 0.826
+Shared embeddings 0.823
+6-layer encoder 0.821
+Retrieval values Neighbours N 0.950
+Continuations F 0.895
+No retrieval 0.987
+Training neighbours 1 training neighbours 0.858
+4 training neighbours 0.847
+Cross attention position CA top layer (1/12) 0.827
+CA mid layer (6/12) 0.823
+CA top layer (12/12) 0.831
+CA all layers 0.860
+CA every 3 from 1 0.823
+D. Model ablations
+We validate important design choices by evaluating what happens when we do not include them. We
+use the 247M parameter model for all experiments and we train on a compressed 157 billion token
+schedule for all ablation experiments. We describe results relative to the default settings presented in
+the main text and recalled here. We report C4 evaluation loss at the end of the training process, and
+also compares how the evaluation loss decrease versus the training time, measured relatively to the
+baseline training time. Results are reported in Fig. 8 and Table 13.
+Using relative encodings in cross-attention. Using relative encodings in cross-attention, as de-
+scribed in §B.1.2, provides a pure improvement both in the number of steps to reach a given perfor-
+mance and computational eﬃciency.
+Conditioning the encoder on the previous chunk. Conditioning the encoder on the previous
+chunk’s intermediate embeddings, as described in §B.1.1, provides a pure improvement both in term
+of number of steps and computational eﬃciency.
+Sharing embeddings. Sharing embeddings across the encoder and the decoder does not aﬀect
+performance. This motivates us using separate embeddings, as it allows to have a narrower encoder
+than decoder as we scale up the decoder size.
+Attending neighbours and their continuation. R/e.sc/t.sc/r.sc/o.scmodels are trained by attending, for a
+given chunk, to both the neighbours of the preceding chunk and their continuation in time. We
+measure how training and evaluating R/e.sc/t.sc/r.sc/o.scmodels on neighbours only and their continuation
+only aﬀects performance. Overall, attending to neighbours only provides 22%of the performance
+improvement due to retrieval in R/e.sc/t.sc/r.sc/o.sc, while attending the future of the neighbours gives 56%of
+30
+
+Improving language models by retrieving from trillions of tokens
+0.820.840.860.88C4 eval bits-per-bytesRETRO
+No CA positional encodings
+0.820.840.860.88
+RETRO
+No query conditioning
+0.820.840.860.88
+RETRO: distinct embeddings
+Shared embeddings
+0.0 0.2 0.4 0.6 0.8 1.0 1.2
+Training time (relative to baseline)0.820.840.860.88C4 eval bits-per-bytesRETRO: 2 layer encoder
+6 layer encoder
+0.820.840.860.88
+RETRO: 2 training nei.
+1 training nei.
+4 training nei.
+0.0 0.2 0.4 0.6 0.8 1.0 1.2
+Training time (relative to baseline)0.80.91.01.11.2RETRO: retrieve [N,F]
+Neighbours N
+Continuations F
+No retrieval
+0.0 0.2 0.4 0.6 0.8 1.0 1.2
+Training time (relative to baseline)0.8200.8250.8300.8350.840
+RETRO: CA every 3 from 6
+CA top layer (1/12)
+CA mid layer (6/12)
+CA top layer (12/12)
+CA all layers
+CA every 3 from 1
+Figure 8jComputational eﬃciency for diﬀerent variants. We report the training curves plotting
+C4 evaluation bytes per bits against time, relative to the time taken to train the baseline R/e.sc/t.sc/r.sc/o.sc
+model. Overall, our design choices are optimal in term of computational eﬃciency.
+the performance. Attending to both neighbours and their continuation is the most eﬃcient choice
+both in term of ﬁnal performance and training eﬃciency.
+Training a deeper encoder. All models in the text use a relatively small R/e.sc/t.sc/r.sc/o.scencoder. We
+experimented with a 3deeper encoder. We found that this resulted in a tiny decrease in loss– 0.15%
+at the cost of a larger training time ( ¸20%). Overall, using a shallow encoder is the best choice in
+term of training eﬃciency.
+Training with multiple neighbours. We measure the eﬀect of training on a single retrieved neigh-
+bour, as well as training on 4 neighbours ( R/e.sc/t.sc/r.sc/o.scuses 2 neighbours in training). Training on a
+single neighbour results in a large decrease in performance, while training on 4 neighbours does not
+give substantial performance improvement at the end of training, but induces a large computational
+overhead. Overall, we ﬁnd that using 2 neighbours is the best choice in term of training eﬃciency.
+Furthermore, evaluation can be done with additional neighbours.
+Frequency of cross-attention. We measure how the frequency of cross-attention in the decoder
+aﬀects performance. Overall, attending only once at the top or the bottom layer is a bad choice, while
+attending once on a mid-depth layer is relatively sound. We choose to have cross-attention every 3
+layer as this provides a good trade-oﬀ between performance and run-time.
+31
+
+Improving language models by retrieving from trillions of tokens
+E. Qualitative experiments
+We illustrate the usage of R/e.sc/t.sc/r.sc/o.scmodels by looking at the perplexity of evaluation samples and by
+producing samples autoregressively.
+E.1. Inspecting neighbours and perplexities on evaluation data
+To build an intuition of what kind of information is leveraged by R/e.sc/t.sc/r.sc/o.scmodels, we suggest to
+have a closer look at a few evaluation documents and the corresponding retrieved data in Tables
+16, 17, 18 and 19. In these tables, the 4 rows corresponds to the ﬁrst 4 chunks of the documents.
+The left-most column shows the chunk 𝐶𝑢from the document being evaluated, where each token is
+colouredbythenegativecrossentropylossdiﬀerence 𝐿R/e.sc/t.sc/r.sc/o.sc[O/f.sc/f.sc] 𝐿R/e.sc/t.sc/r.sc/o.sc,apositivevalue,coloured
+in yellow, indicates that R/e.sc/t.sc/r.sc/o.scperforms better when it has access to neighbours data. The second
+columns also shows the evaluated chunk 𝐶𝑢but where each token 𝑖is coloured by the length of the
+longest common preﬁx (LCP) with the preceding neighbours, i.e. the largest integer 𝑗such that
+the preﬁx¹𝑥𝑖 𝑗 1𝑥𝑖ºalso appears in R/e.sc/t.sc¹𝐶𝑢 1º. Conversely, columns three and four show the
+ﬁrst two neighbours and their continuation, respectively »𝑁1
+𝑢𝐹1
+𝑢¼and»𝑁2
+𝑢𝐹2
+𝑢¼coloured by LCP with
+subsequent chunk 𝐶𝑢¸1. LCP colouring helps to visually identify where the evaluated document
+overlaps the retrieved data. Note that the ﬁrst chunk, 𝐶1, in the second column is not coloured as
+it does not have any preceding neighbours to compute LCP with. Similarly, we do not show the
+neighbours of the fourth chunk, as these are not used to condition any of the ﬁrst four chunks.
+Our qualitative analysis exhibits two major behaviors.
+Firstly, we observe that sometimes, speciﬁc facts in 𝐶𝑢can be extracted from the preceding
+neighbours R/e.sc/t.sc¹𝐶𝑢 1ºand that this can correspond to signiﬁcant reduction in loss from the R/e.sc/t.sc/r.sc/o.sc
+model for the corresponding tokens. Some examples of such behavior include the journal name
+Publishers Weekly in Table 16, the football team name Tyronein Table 17 or the event dates 25 August
+to 6 September 2020 in Table 18. In these three examples, the evaluated data consists of recent
+Wikipedia articles written in September 2021, after we built our retrieval dataset (see section §A.2).
+Yet, relevant information to predict this new data was available in the pre-existing retrieval data and
+theR/e.sc/t.sc/r.sc/o.scmodel seems to be able to correctly leverage it.
+On the other hand, we also observe that some of the evaluation data can partially leak in our
+training and retrieval data, despite the use of deduplication. R/e.sc/t.sc/r.sc/o.sccan dramatically exploit such
+leakage. Table 19 illustrates this behavior, where the chunks 𝐶2and𝐶3largely overlaps R/e.sc/t.sc¹𝐶1ºand
+R/e.sc/t.sc¹𝐶2ºrespectively, up to small formatting diﬀerences, which leads to much lower R/e.sc/t.sc/r.sc/o.scloss for
+all the corresponding tokens. Fig. 6 shows that it is possible to quantify how much of the R/e.sc/t.sc/r.sc/o.scloss
+reduction is due to each of these two behaviors, by ﬁltering out evaluation chunks that overlaps with
+the retrieval set.
+E.2. Inspecting samples
+We can follow the same procedure as above on samples generated using R/e.sc/t.sc/r.sc/o.scmodels, in order to
+better understand where retrieval data had an inﬂuence on sampling. We show examples of samples
+obtained using the 7.5B R/e.sc/t.sc/r.sc/o.scmodel in Table 6, 7, 20 and 21.
+E.3. Neighbour quantiﬁcation
+To quantify a notion of distance between the source document and the retrieved chunks, we can ask
+the distance between source articles when retrieving only from Wikipedia. Consonni et al. (2019)
+32
+
+Improving language models by retrieving from trillions of tokens
+Figure9jWikipedialink-distancebetweenretrievedarticles. Foreachsequences,chunkcombina-
+tion we compute the link distance between the target and the top-5 neighbours using only Wikipedia.
+The rank shows the relative neighbour distance, where rank-1 is the ﬁrst neighbour and rank 5 is
+the ﬁfth. The diﬀerent colours represent link distance. Because we do not retrieve from the same
+document, 1 is the smallest value. We ﬁnd, on average, the distance between random articles with a
+path between them is over 5.0
+provides a Wikipedia link dataset which, for each article, contains a list of neighbouring articles.
+Using this, we construct a directed graph and compute the distance from one page to another. In
+Fig. 9 we compute the link-distance between training sequences and the retrieved neighbours. We
+ﬁnd that retrieved documents tend to be from articles that are quite close to the article containing
+the target. Furthermore, we ﬁnd that on average the distance increases with rank, suggesting that
+our neighbours are both useful and that the order is reasonable. This provides conﬁdence for our
+larger-scale experiments where document distance is less well deﬁned.
+F. Complementary quantitative results
+We report tables corresponding to quantitative ﬁgures of the main text, as well as further ﬁltered
+language model results on the Pile.
+F.1. Main text datasets
+We report the performance of R/e.sc/t.sc/r.sc/o.scand baseline models, measured in bits-per-bytes on evaluation
+set, in Table 14.
+F.2. The Pile
+In Fig. 4, we compare R/e.sc/t.sc/r.sc/o.scagainst Jurassic-1 (Lieber et al., 2021). The full bits-per-bytes results
+are reported in Table 15.
+F.3. Filtered results
+Distribution of leaked chunks in our main evaluation sets. We evaluate leakage between the
+evaluation sets and the training set by measuring the proportion of evaluation chunks with a certain
+33
+
+Improving language models by retrieving from trillions of tokens
+Table 14jFull results for the main language modelling datasets. First three sets of rows correspond
+to Fig. 1, last set of rows to Fig. 3.
+Baseline R/e.sc/t.sc/r.sc/o.sc[Oﬀ] R/e.sc/t.sc/r.sc/o.sc[On]
+172M 425M 1.5B 7.5B 172M 425M 1.5B 7.5B 172M 425M 1.5B 7.5B
+C4 Eval bpb 0.98 0.92 0.84 0.78 0.98 0.92 0.84 0.78 0.82 0.77 0.71 0.66
+C4 Eval bpb (900B) - - - - - - - - 0.88 0.83 0.76 0.71
+C4 Eval bpb (360B) - - - - - - - - 0.92 0.87 0.80 0.74
+C4 Eval bpb (180B) - - - - - - - - 0.94 0.89 0.81 0.75
+C4 Eval bpb (90B) - - - - - - - - 0.95 0.89 0.82 0.76
+C4 Eval bpb (36B) - - - - - - - - 0.96 0.90 0.83 0.77
+C4 Eval bpb (18B) - - - - - - - - 0.96 0.91 0.83 0.77
+C4 Eval bpb (9B) - - - - - - - - 0.96 0.91 0.83 0.77
+C4 Eval bpb (4B) - - - - - - - - 0.97 0.91 0.84 0.78
+C4 Eval bpb (2B) - - - - - - - - 0.97 0.91 0.84 0.78
+C4 Eval bpb ( 𝑘=1) - - - - - - - - 0.84 0.79 0.73 0.67
+C4 Eval bpb ( 𝑘=2) - - - - - - - - 0.83 0.78 0.72 0.67
+C4 Eval bpb ( 𝑘=3) - - - - - - - - 0.82 0.78 0.71 0.66
+C4 Eval bpb ( 𝑘=4) - - - - - - - - 0.82 0.77 0.71 0.66
+C4 Eval bpb ( 𝑘=5) - - - - - - - - 0.82 0.77 0.71 0.66
+C4 Eval bpb ( 𝑘=10) - - - - - - - - 0.82 0.77 0.71 0.66
+C4 Eval bpb ( 𝑘=20) - - - - - - - - 0.82 0.77 0.71 0.66
+C4 Eval bpb ( 𝑘=30) - - - - - - - - 0.82 0.77 0.71 0.65
+C4 Eval bpb ( 𝑘=40) - - - - - - - - 0.83 0.77 0.71 0.65
+C4 Eval bpb ( 𝑘=50) - - - - - - - - 0.83 0.78 0.71 0.66
+C4 Eval bpb ( 𝑘=60) - - - - - - - - 0.84 0.78 0.72 0.66
+C4 Eval bpb ( 𝑘=70) - - - - - - - - 0.84 0.79 0.72 0.66
+C4 Eval bpb ( 𝑘=80) - - - - - - - - 0.85 0.79 0.73 0.66
+C4 Eval bpb ( 𝑘=90) - - - - - - - - 0.85 0.79 0.73 0.66
+C4 Eval bpb ( 𝑘=100) - - - - - - - - 0.85 0.79 - 0.67
+Lambada Accuracy 0.42 0.51 0.61 0.69 0.47 0.54 0.63 0.70 0.52 0.60 0.67 0.73
+Curation Corpus bpb 0.69 0.63 0.56 0.52 0.68 0.64 0.57 0.51 0.66 0.61 0.55 0.50
+Wikitext103 Perplexity 25.62 19.29 13.98 10.65 25.88 19.78 13.89 10.40 3.32 2.96 2.53 2.22
+Wikipedia Sept. 2021 bpb 0.85 0.78 0.71 0.65 0.86 0.79 0.71 0.65 0.79 0.73 0.66 0.61
+overlap𝑟¹𝐶º. We show histograms in Fig. 10. We can see that 𝐶4has some slight overlaps between
+train and evaluation. Similarly, chunks of Wikitext103 appear in the training set despite having
+removed the actual Wikitext103 evaluation documents from the training set. On the other hand, our
+Wikipedia September 21 dataset shows almost no leakage (data being original documents that did
+not exist at training data creation), and neither does Curation Corpus.
+Filtered results on the Pile. We report chunk overlap distribution and ﬁltered performance curves
+on the Pile in Fig. 12 and Fig. 11, respectively. The qualitative interpretation of the ﬁltered curves
+is the same: R/e.sc/t.sc/r.sc/o.scmodels exploit leakage more, but the performance improvement they provide
+remains signiﬁcant even on original chunks that haven’t been observed in the training set.
+34
+
+Improving language models by retrieving from trillions of tokens
+Table 15jFull results on The Pile, measured in bits-per-bytes. Jurassic-1 and GPT-3 numbers are
+taken from Lieber et al. (2021). Gopher numbers are taken from Rae et al. (2021).
+Subset 7B Baseline (Ours) GPT-3 Jurassic-1 Gopher 7.5B R/e.sc/t.sc/r.sc/o.sc
+arxiv 0.742 0.838 0.680 0.641 0.714
+books3 0.792 0.802 0.835 0.706 0.653
+dm_mathematics 1.177 1.371 1.037 1.135 1.164
+freelaw 0.576 0.612 0.514 0.506 0.499
+github 0.420 0.645 0.358 0.367 0.199
+gutenberg_pg_19 0.803 1.163 0.890 0.652 0.400
+hackernews 0.971 0.975 0.869 0.888 0.860
+nih_exporter 0.650 0.612 0.590 0.590 0.635
+opensubtitles 0.974 0.932 0.879 0.894 0.930
+philpapers 0.760 0.723 0.742 0.682 0.699
+pile_cc 0.771 0.698 0.669 0.688 0.626
+pubmed_abstracts 0.639 0.625 0.587 0.578 0.542
+pubmed_central 0.588 0.690 0.579 0.512 0.419
+stackexchange 0.714 0.773 0.655 0.638 0.624
+ubuntu_irc 1.200 0.946 0.857 1.081 1.178
+uspto_backgrounds 0.603 0.566 0.537 0.545 0.583
+0% 50% 100%
+Eval/train chunk overlapChunk densityC4
+0% 50% 100%
+Eval/train chunk overlapCuration Corpus
+0% 50% 100%
+Eval/train chunk overlapWikitext103
+0% 50% 100%
+Eval/train chunk overlapWikipedia Sept 2021
+Figure 10jDistribution of the overlap between evaluation and train chunks for C4, Curation
+Corpus, Wikitext103 and Wikipedia Sept. 2021.
+35
+
+Improving language models by retrieving from trillions of tokens
+0.40.50.60.70.80.91.0Eval bpbarxiv172M 425M 1.5B 7.5B Baseline RETRO [ON]
+0.40.50.60.70.80.91.0bookcorpus2
+0.30.40.50.60.70.80.91.0books3
+0.91.01.11.21.31.4dm_mathematics
+0.60.81.01.21.4Eval bpbeuroparl
+0.40.50.60.70.8freelaw
+0.20.40.60.81.0github
+0.20.40.60.81.0gutenberg_pg_19
+0.70.80.91.01.11.2Eval bpbhackernews
+0.650.700.750.80nih_exporter
+0.60.70.80.91.01.11.2opensubtitles
+0.40.50.60.70.80.91.0openwebtext2
+0.40.50.60.70.80.91.0Eval bpbphilpapers
+0.50.60.70.80.91.0pile_cc
+0.550.600.650.700.750.800.85pubmed_abstracts
+12.5% 50% 100%
+Max allowed eval/train overlap0.30.40.50.60.70.8pubmed_central
+12.5% 50% 100%
+Max allowed eval/train overlap0.60.70.80.91.01.1Eval bpbstackexchange
+12.5% 50% 100%
+Max allowed eval/train overlap0.60.81.01.21.41.6ubuntu_irc
+12.5% 50% 100%
+Max allowed eval/train overlap0.550.600.650.700.75uspto_backgrounds
+Figure 11jFiltered evaluation losses on the Pile , with baseline Transformers and R/e.sc/t.sc/r.sc/o.sc.
+36
+
+Improving language models by retrieving from trillions of tokens
+Chunk densityarxiv bookcorpus2 books3 dm_mathematicsChunk densityeuroparl freelaw github gutenberg_pg_19Chunk densityhackernews nih_exporter opensubtitles openwebtext2Chunk densityphilpapers pile_cc pubmed_abstracts pubmed_central
+0% 50% 100%
+Eval/train chunk overlapChunk densitystackexchange
+0% 50% 100%
+Eval/train chunk overlapubuntu_irc
+0% 50% 100%
+Eval/train chunk overlapuspto_backgrounds
+Figure12jDistributionoftheoverlapbetweenevaluationandtrainchunks forthePileevaluation
+sets.
+37
+
+Improving language models by retrieving from trillions of tokens
+Table 16jGreat Circle (novel) , from Wikipedia September 21. The article is about a recent novel and chunks
+𝐶3and𝐶4are speciﬁcally about its reception. The name Publishers Weekly of the journal that reviewed the
+novel appears both in the neighbours »𝑁1
+3𝐹1
+3¼»𝑁2
+3𝐹2
+3¼of chunk𝐶3and in the subsequent chunk 𝐶4, where the
+loss for those tokens is signiﬁcantly reduced by R/e.sc/t.sc/r.sc/o.sc.
+𝐶𝑢colored by loss diﬀerence 𝐶𝑢colored by LCP with R/e.sc/t.sc¹𝐶𝑢 1º »𝑁1𝑢𝐹1𝑢¼colored by LCP with 𝐶𝑢¸1»𝑁2𝑢𝐹2𝑢¼colored by LCP with 𝐶𝑢¸1
+𝐿R/e.sc/t.sc/r.sc/o.sc[O/f.sc/f.sc] 𝐿R/e.sc/t.sc/r.sc/o.sc 6 05=0>05LCP=0,1,2,3,4,>5 LCP=0,1,2,3,4,>5 LCP=0,1,2,3,4,>5
+Great Circle (novel)Great Circle i Great Circle (novel) Great Circle i The Dutch House (novel)The Dutch H The Dutch House (novel)The Dutch H
+s a 2021 novel by Maggie Shipstead, s a 2021 novel by Maggie Shipstead, ouseis a2019 novel by Ann Patchett ouseis a2019 novel by Ann Patchett
+published on May 4, 2021, by Alfred published on May 4, 2021, by Alfred .It was published by Harper on Sept .It was published by Harper on Sept
+A. Knopf.The novel has been shortl A. Knopf. The novel has been shortl ember 24, 2019. It tells thestory o ember 24, 2019. It tells thestory o
+isted for the 2021 Booker Prize.Sy isted for the 2021 Booker Prize. Sy fabrother and sister over thecour fabrother and sister over thecour
+nopsis The novel consists of two pa nopsis The novel consists of two pa se of ﬁve decades .The novel was a se of ﬁve decades.[2]The novel wa
+rallel narratives about two ﬁctiona rallel narratives about two ﬁctiona ﬁnalist for the2020 Pulitzer Priz saﬁnalist for the2020 Pulitzer P
+l women. One is l women. One is e for Fiction .PlotThe Dutch House rize for Fiction.[3]Plot[edit]Th
+is amansion located inElkins Park e Dutch House is amansion located i
+,Pennsylvania , asuburb of Philadel nElkins Park ,Pennsylvania , asubur
+phia.It was built in1922 bytheVa b of Philadelphia .It was built in1
+nHoebeek family , ahusband and wife 922 bytheVanHoebeek family , ahusb
+originally from theNetherlands who and and wife originally from theNet
+made their fortune inthetobacco in herlands whomade their fortune int
+dustry.Cyril Conroy , aself-made re hetobacco industry .Cyril Conroy , a
+al estate mogul self-
+aboutthe disappeared 20th-century aboutthedisappeared 20th -century onbecoming aﬁlmmaker .She has fo basedcloselyonher own youthful e
+aviatorMarianGraves,while the oth aviator Marian Graves ,whiletheoth undasubjectforher ﬁlm project , xperiences .(She plans theﬁlm to b
+erisaboutthestruggling 21st-cent erisaboutthestruggling 21st -cent an obscure African American actress etheﬁrst of two parts , thesecond
+uryHollywood actressHadleyBaxter, ury Hollywood actress Hadley Baxter ,credited only as “the watermelon wom dealingwith theaftermath of thef
+who isattempting tomakeaﬁlmab who isattempting to make aﬁlm ab an” in old Hollywood ﬁlms ,andthe irst’s events.) Byrne plays ayoung
+outMarian.Hadley’snarrative isto out Marian .Hadley’s narrative isto subsequent ﬁlm recounts her search ﬁlm student named Julie (Hogg’s ava
+ldinthe ﬁrst-person,whileMarian ldintheﬁrst-person,while Marian forthis woman even as it covers ,in tar), who starts her artistic educat
+’ssectionsaretoldin thethird-pe ’s sections are told inthethird-pe themanner of theearlier Dunyement ionwithhigh hopes of making amovi
+rson rson aries,Dunye’s friendships and her l e aboutaboy named Tony ,living in
+ove life.InThe Watermelon Woman ,Dworking-class Sunderland ,who adores
+unye makes theﬁlm she set out to m his mother — “is almost obsessed wi
+ake in 1990 about African American w thher,” as eager Julie tells her ad
+omen artists , aﬁlm that both inven visers.Her idealism is evident from
+ts an artistic predecessor withwhom thestart.The advisers are skepti
+she can identify and also “ﬁnds” C cal,and no wonder; Julie’s family i
+heryl herself as theartist that she s posh,withacomfortable country e
+seeks.As Dunye identiﬁes herself state and
+.ReceptionGreatCirclereceived .Reception Great Circle received ﬁrst edition hardcover Reception The book also debuted at number tw
+veryfavorable reviews,withacumul very favorable reviews ,withacumul Thenoveldebuted at number one on T o on The New York Times Hardcover No
+ative"Rave"ratingatthereviewag ative "Rave" rating at thereview ag he New York Times ﬁction best-selle nﬁction best- sellers list on July 2
+gregatorwebsiteBookMarks,basedo gregator website Book Marks , based o r list.As oftheweek ending Februa 8, 2019.[5] It spent eleven weeks on
+n22bookreviewsfrommainstream li n22 book reviews frommainstream li ry 20, 2021, thenovelhas spent 38 thelist.[6]Reception[edit] Att
+terarycritics.Thenoveldebutedat terary critics .The novel debuted at weeks on thelist.Atthe review ag he review aggregator website Book Ma
+numberfourteen onTheNewYorkTim number fourteen onThe New York Tim gregator website Book Marks ,which a rks,which assign sindividual rating
+esHardcoverﬁctionbest-sellerlis es Hardcover ﬁction best -seller lis ssignsindividual ratings tobook re stobook reviews from mainstream li
+tfortheweekendingMay tfor theweek ending May views from mainstream literary criti terary critics , thebook received a
+cs, thenovelreceived a cumulative cumulative "Positive" rating based o
+"Rave" rating based on 38 reviews ,wn 29 reviews: 12 "Rave" reviews ,6"
+ith only one "mixed"review.Publish Positive" reviews ,9"Mixed" reviews
+ersWeeklywrote,"Bennett renders h , and2"Pan" reviews.[7] Publisher
+er characters andtheir struggles wi sWeeklygavethebook a mixed revie
+th great compassion , andexplores thw,writing,"Unfortunately ,all thre
+ecomplicated state of mind that Ste e
+lla ﬁnds herself in while passing a
+s white." In its
+8,2021.Criticspraisedthenovel 8, 2021. Critics praised thenovel
+forsustaining itslengthandforSh for sustaining itslengthandfor Sh
+ipstead’sresearch andintricatenov ipstead’sresearch andintricatenov
+elstructure forperfectly interweav elstructure for perfectly interweav
+ingtheparallelnarratives ,despite ingtheparallel narratives ,despite
+thetimeandcircumstances separati thetimeandcircumstances separati
+ngthem.Inits starred review,Pub ng them.Initsstarredreview,Pub
+lishersWeeklywrote,"Shipsteadman lishersWeeklywrote,"Shipstead man
+agestoportray both Marian’sand Ha agestoportray both Marian’ s andHa
+dley’s dley’s
+38
+
+Improving language models by retrieving from trillions of tokens
+Table 17jAll-Ireland Senior Football Championship Final , from Wikipedia September 21. The name of
+the team Tyroneappears both in the second neighbours »𝑁2
+1𝐹2
+1¼of chunk𝐶1and in the subsequent chunk 𝐶2,
+where the loss for those tokens is signiﬁcantly reduced by R/e.sc/t.sc/r.sc/o.sc.
+𝐶𝑢colored by loss diﬀerence 𝐶𝑢colored by LCP with R/e.sc/t.sc¹𝐶𝑢 1º »𝑁1𝑢𝐹1𝑢¼colored by LCP with 𝐶𝑢¸1»𝑁2𝑢𝐹2𝑢¼colored by LCP with 𝐶𝑢¸1
+𝐿R/e.sc/t.sc/r.sc/o.sc[O/f.sc/f.sc] 𝐿R/e.sc/t.sc/r.sc/o.sc 6 05=0>05LCP=0,1,2,3,4,>5 LCP=0,1,2,3,4,>5 LCP=0,1,2,3,4,>5
+2021 All-Ireland Senior Football Cha 2021 All-Ireland Senior Football Cha 2018 All-Ireland Senior Football Cha 2018 All-Ireland Senior Football Cha
+mpionship FinalThe 2021 All-Irelan mpionship Final The 2021 All-Irelan mpionship FinalThe 2018 All -Irelan mpionship FinalThe 2018 All -Irelan
+d Senior Football Championship Final d Senior Football Championship Final d Senior Football Championship Final d Senior Football Championship Final
+was the 134th ﬁnal of the All-Irel was the 134th ﬁnal of the All-Irel was the131stﬁnaloftheAll-Irel was the131stﬁnaloftheAll-Irel
+and Senior Football Championship and and Senior Football Championship and and Senior Football Championship and and Senior Football Championship and
+the culmination of the 2021 All-Ire the culmination of the 2021 All-Ire theculmination of the2018 All-Ire theculmination of the2018 All-Ire
+land Senior Football Championship. T land Senior Football Championship. T land Senior Football Championship inland Senior Football Championship in
+he match was played at Croke Park in he match was played at Croke Park in Gaelic football .The match wasplay Gaelic football .The match wasplay
+Dublin on 11 September 2021. It was Dublin on 11 September 2021. It was ed at Croke Park inDublinon 2Sept ed at Croke Park inDublinon 2Sept
+originally scheduled originally scheduled ember 2018.[3]It was thesecond ti ember 2018.It was thesecond time
+metheteamshadmetin the ﬁnal ; D theteamshadmetin the ﬁnal ; Dubl
+ublin won the ﬁrstencounter in199 in wonthe ﬁrstencounter in1995.
+5.Theﬁnal was shown live inIrel Itwas thethird consecutive year th
+andonRTÉ Two as part of The Sunday atateam qualiﬁed under thesystem
+Game live programme ,presented byMof second chances introduced in200
+ichael Lyster from Croke Park ,with 1;Tyronequaliﬁed despite defeat i
+studio analysis from Joe Brolly , nits provincial championship .Dubl
+in wonthe ﬁnal by a margin of six
+points
+for28Augustbuthadtobe postpon for 28 August but hadto be postpon game 23–23 after extra time ,howeve witha last-ditch plan of action –
+edbytwoweekswhenthe–semi-ﬁna edbytwo weeks when the– semi-ﬁna r Ulster progressed under the compet play the Munster/Ulster Semi -Finalo
+lwaspostponed dueto aCOVID-19ou lwaspostponed due to aCOVID-19 ou ition rules as theyscored three tir nMarch 16 th,withthe winners topl
+tbreak.Ulsterchampions Tyronetook tbreak.Ulster champions Tyronetook esinthe match against Leinster’s t ay Connacht inthe following day’s F
+onConnachtchampions Mayo,inwhat onConnacht champions Mayo , inwhat wo.The semi -ﬁnals took place inmi inal.On March 16 th thenMunsterha
+wastheirﬁrstevermeetinginaf wastheirﬁrstever meeting in a f d November andsaw both the away tea d aneasywinover Ulster (9-07 to0
+inal,winningtheir4thtitleafter inal,winning their 4th title after mswin,as Ulster beat Glasgow andE-00) but thankfully for the Munster
+a2–14to0–15win.Mayolost a 2–14 to 0–15 win .Mayo lost dinburgh beat Connacht .Theﬁnalwa players,the pitch cut up so badly d
+s heldonSaturday December 20 at Mu uring the game ,it was decided topo
+rrayﬁeld Stadium andsaw Ulster bea stpone the following day’s hurling F
+t Edinburgh 21–27 towinthe Celtic inal (until Easter Sunday) withthe
+Cup.2004–05 season The format of football Final going ahead onits ow
+the competition was changed for the nonSt.Patrick’s Day .Less than a
+second edition of the competition .T week later , onMarch 23rd ,seven
+he competition was moved toAprilan
+dMaytorun after the conclusion of
+the Celtic League competition ,with
+only eight
+their11thconsecutive ﬁnalsince their 11thconsecutive ﬁnalsince 1-16to0-15 winners toqualify for which Dublin won by0-12to0-9.D
+1989,losing6ﬁnalsin9years,wi 1989, losing 6 ﬁnals in9 years,wi their10th league ﬁnal in the past ublin are going for an unprecedented
+ththislatestdefeatonanidentica ththis latest defeat on anidentica 13 years. They have won seven of t fourth successive Championship win
+lscorelineto2020,whenMayolost l scoreline to2020, when Mayo lost heirprevious league ﬁnalsunder Co over Kerry. Prior to theircurrent r
+toDublin.Background wereaiming toDublin.Background were aiming dy since 2002, losing theothertwo un,which started with the2011 All-
+towintheirfourthtitleandﬁrst towintheir fourth title andﬁrst toWaterford (2007 ) andDublin (201 Irelandﬁnal,they had only managed
+All-Irelandsince1951.Sincethen, All-Ireland since 1951. Since then, 1 ).Despitethedefeat there were two consecutive victories over them
+theyhadlosttenﬁnals(1989,1996 they had lost ten ﬁnals (1989, 1996 some distinct positives froma Galwa ontwo separate occasions - 1909an
+,1997,2004,2006, , 1997, 2004, 2006, y perspective- most notably thesoli d’24, 1976 and’77.The longest wi
+d displays of Daithí Burke at centre nningsequence in therivalrywasse
+-back,Joseph Cooney at wing-back antbyKerry between 1941 and1975, wh
+dRonanBurke at full-back. Colm Cal en they won each of thesix Champion
+lanan continued his excellent form iship meetings. Kerry went nine games
+ngoalandalso hit a stunning free unbeaten between 1978 and2009, wit
+fromdistance.Indeed it wasnotth h four victories either side of a dr
+eGalway defence that wastheproble amatic draw at thequarter-ﬁnal sta
+m geinThurlesin2001.Sunday will
+marktheir11th
+2012,2013,2016,2017,2020).app 2012, 2013, 2016, 2017, 2020). app
+earedintheirseventhﬁnal,winnin earedin theirseventhﬁnal,winnin
+gonthreeoccasions in2003,2005a g onthreeoccasions in 2003, 2005 a
+nd2008.Thisﬁnalwastheﬁfthto nd2008.Thisﬁnal was theﬁfthto
+becontested bycountyteamsfromC be contested bycounty teams fromC
+onnachtandUlster,theotherﬁnals onnachtandUlster, theotherﬁnals
+were1925(GalwaybeatCavan),1943 were1925 (Galway beat Cav an), 1943
+(Roscommon beatCavan), 1948(Cavan (Roscommon beat Cav an), 1948 (Cavan
+beat beat
+39
+
+Improving language models by retrieving from trillions of tokens
+Table 18j2020 Summer Paralympics , from Wikipedia September 21. The original dates of the event,
+25 August to 6 September 2020 , appears both in the neighbors »𝑁1
+1𝐹1
+1¼»𝑁2
+1𝐹2
+1¼of chunk𝐶1and in the
+subsequent chunk 𝐶2, where the loss for those tokens is signiﬁcantly reduced by R/e.sc/t.sc/r.sc/o.sc. Interestingly, in this
+case, the neighbors were written at a time when the event hadn’t yet been postponed.
+𝐶𝑢colored by loss diﬀerence 𝐶𝑢colored by LCP with R/e.sc/t.sc¹𝐶𝑢 1º » 𝑁1𝑢𝐹1𝑢¼colored by LCP with 𝐶𝑢¸1»𝑁2𝑢𝐹2𝑢¼colored by LCP with 𝐶𝑢¸1
+𝐿R/e.sc/t.sc/r.sc/o.sc[O/f.sc/f.sc] 𝐿R/e.sc/t.sc/r.sc/o.sc 6 05=0>05LCP=0,1,2,3,4,>5 LCP=0,1,2,3,4,>5 LCP=0,1,2,3,4,>5
+2020 Summer ParalympicsThe , brand 2020 Summer Paralympics The , brand picsGames.* The2020Summer Paraly 2020Summer Paralym picsTheare an
+ed as the Tokyo 2020 Paralympic Game ed as the Tokyo 2020 Paralympic Game mpicsare an upcoming major internat upcoming major international multi-
+s, was an international multi-sport s, was an international multi-sport ional multi-sport event forathletes sport event forathleteswithdisabi
+parasports event held from 24 August parasports event held from 24 August withdisabilities governed by theI lities governed by theInternational
+to 5 September 2021 in Tokyo, Japan to 5 September 2021 in Tokyo, Japan nternational Paralympic Committee .S Paralympic Committee .Scheduled as
+. They were the 16th Summer Paralymp . They were the 16th Summer Paralymp cheduled as the16thSummer Paralym pthe16thSummer Paralym picGames,th
+ic Games as organized by the Interna ic Games as organized by the Interna icGames,it is planned tobeheld i ey arescheduled tobeheld in Tokyo
+tional Paralympic Committee (IPC). tional Paralympic Committee (IPC). n Tokyo, Japanfrom25Augustto6 S ,Japan between 24 August and 5Sept
+eptember 2020.3. 2019 BWF Para-Bad ember2021. Originally dueto takep
+minton World Championships- The 20 lacebetween 25Augustand 6Septemb
+19 BWF Para-Badminton World Champion er2020. On 24March 2020, the IOCa
+ships was held from 20to 25August nd the Tokyo Organizing Committee of
+2019inBasel,Switzerland .- Men’s ﬁcially announced that the2020Sum
+event: Gold Medal: Pramod Bhagat in merOlympics and2020Summer Paralym
+Singles SL3 Event andPramod Bhagat picswould be postponed to 2021,due
+andManoj totheCOVID-19 pandemic, markingt
+heﬁrst time that the Paralym picsh
+as beenpostponed. They will stillb
+e publicly marketed as
+Originally scheduled totakeplacef Originally scheduled to takeplacef once submitted .This process was u Olympiad, have now been postponed a
+rom25 August to6September 2020,i rom25Augustto6 September 2020, indertaken following thepostponement ndrescheduled for 23 July to8 Augu
+nMarch2020 both the2020Summer Ol n March 2020 boththe2020Summer Olof the Tokyo 2020Games due tothe st 2021in Tokyo,Japan.TheGames
+ympicsandParalympicswerepostpone ympicsandParalympicswerepostpone COVID-19 pandemic, withboththeOly werepostponed inMarch 2020 as are
+dbyoneyearduetotheCOVID-19pa d byone year duetotheCOVID-19 pa mpicsand Paralym picspushed back a sultof theworldwide Covid-19 pande
+ndemic,withtherescheduled Gamess ndemic,with therescheduled Games s year.Now,the Tokyo 2020 Olympics mic, although they will still keep t
+till referred toasTokyo2020form tillreferredto as Tokyo 2020 for m are scheduled for July 23 toAugust henameTokyo2020 for marketing and
+arketingandbranding purposes.As arketingandbranding purposes .As 8 whilethe Paralym picsareduetof branding purposes .This will be th
+withtheOlympics , theGameswerela with the Olympics, the Games were la ollow from August 24 toSeptember 5. eﬁrst time theOlympicGameshave
+rgelyheldbehind rgelyheldbehind Therefund process is separate for been postponed rather than cancelled
+ticketholders outside of Japan , who .
+purchased tickets through authorise
+d ticket resellers (ATR). Each ATR
+has its own individual refund proced
+ure.Early ﬁgures from therefund
+process for the Tokyo 2020 Olympics
+stated that around 18 per cent
+closeddoorswith nooutsidespecta closed doors withnooutsidespecta has been rescheduled toMay 1-4 bec Olympic Games ,when Tokyo became th
+torsduetoastateofemergency in torsduetoastateofemergency in ause of travel restrictions under th eﬁrst cityinAsiatohosttheOly
+theGreater Tokyo Area andotherpre theGreaterTokyoAreaandother pre ecurrent state of emergency inToky mpicand Paralym picGames,but unfor
+fectures.TheGameswerethesecond fectures. TheGameswerethesecond oandother 10 prefectures across Ja tunately strong winds made it an imp
+Summer Paralympicshosted by Tokyos Summer Paralympicshosted by Tokyospan.The Tokyo 2020 organizing comm ossible task this timearound.Memb
+ince1964,andthethirdParalympics ince 1964, and thethirdParalympics ittee announced that theﬁrst of 18 ers oftheTokyo Organising Committe
+heldinJapanoverallsincethe199 heldin Japan overall since the199 testevents for theOlympicand Par e oftheOlympicand Paralym picGame
+8WinterParalympicsinNagano.Th 8 Winter ParalympicsinNagano.Th alympicGames will involve wheelchai s (Tokyo 2020), Tokyo Metropolitan G
+eGamesfeatured eGamesfeatured r rugby,which will be held inYoyog overnment oﬃcials ,Tokyo 2020 Torc
+i National Stadium from April 3 to4 h Relay Oﬃcial Ambassadors andrep
+.The FINA Diving World Cup will fo resentatives from Miyagi Prefecture
+llow from April 18 to23 attheToky joinedthearrival ceremony .FLAME
+o Aquatics Centre ,which will also s OF RECOVERYThe Olympic ﬂame will
+erve as an Olympic qualifying event . now be put on display at various loc
+The spread of theCOVID-19 pandemi ationsin theTohoku region , tohigh
+c has slowed down inTokyo three wee lightthemessage of hope in theare
+ks aftertheJapanese capital entere as worst aﬀected by the2011Great
+d a state of emergency on East Japan Earthqu
+539medaleventsin22sports,with 539 medal events in 22 sports ,with
+badmintonandtaekwondo bothmaking badminton andtaekwondo both making
+their Paralym picdebuttoreplacef theirParalympicdebuttoreplace f
+ootball7-a-sideand sailing .China ootball 7-a-side andsailing.China
+toppedthe medal table fortheﬁfth toppedthemedal table fortheﬁfth
+consecutive Paralympics,with96go consecutive Paralympics,with 96 go
+ldsand207totalmedals.GreatBrit ldsand207 total medals . GreatBrit
+ainﬁnishedsecondforthenintht ain ﬁnished second forthenintht
+ime, ime,
+40
+
+Improving language models by retrieving from trillions of tokens
+Table 19jDaniel Radcliﬀe , from Wikitext103Valid, retrieval data from c4. The chunks 𝐶2and𝐶3are almost
+entirely retrieved from neighbours »𝑁1𝐹1¼and»𝑁2𝐹2¼respectively, up to formatting diﬀerences, which
+dramatically reduces the loss for these tokens. This example illustrates that when training data leaks into
+evaluation sets despite deduplication, our R/e.sc/t.sc/r.sc/o.scmodel can directly exploit this leakage.
+𝐶𝑢colored by loss diﬀerence 𝐶𝑢colored by LCP with R/e.sc/t.sc¹𝐶𝑢 1º »𝑁1𝑢𝐹1𝑢¼colored by LCP with 𝐶𝑢¸1»𝑁2𝑢𝐹2𝑢¼colored by LCP with 𝐶𝑢¸1
+𝐿R/e.sc/t.sc/r.sc/o.sc[O/f.sc/f.sc] 𝐿R/e.sc/t.sc/r.sc/o.sc 6 05=0>05LCP=0,1,2,3,4,>5 LCP=0,1,2,3,4,>5 LCP=0,1,2,3,4,>5
+= Daniel Radcliﬀe =Daniel Jacob R = Daniel Radcliﬀe = Daniel Jacob R Daniel Jacob Rad cliﬀe(born 23 July Daniel Jacob Rad cliﬀe(born 23 July
+adcliﬀe ( born 23 July 1989 ) is an adcliﬀe ( born 23 July 1989 ) is an 1989) is an English actor who rose 1989) is an English actor who rose
+English actor who rose to prominenc English actor who rose to prominenc toprominence as thetitle character toprominence as thetitle character
+e as the title character in the Harr e as the title character in the Harr intheHarryPotterﬁlmseries.He intheHarryPotterﬁlmseries.He
+y Potter ﬁlm series. He made his ac y Potter ﬁlm series. He made his ac made his actingdebut at10yearsomade his actingdebut at10yearso
+ting debut at 10 years of age in BBC ting debut at 10 years of age in BBC f age inBBC One ’s1999 television ff age inBBC One ’s1999 television m
+One’s 1999 television ﬁlm David Co One’s 1999 television ﬁlm David Co ilmDavid Copperﬁeld ,followed by h ovie David Copperﬁeld ,followed by
+pperﬁeld, followed by his cinematic pperﬁeld, followed by his cinematic is cinematic debut in2001’sThe Tai hisﬁlmdebutin2001’sThe Tailor
+debut debut lor of Panama. At age 11, he was cas of Panama. At age 11, he was cast as
+t as Harry Potter in the ﬁrst Harry Harry Potter in the ﬁrst Harry Pot
+Potter ﬁlm, and starred in the ser ter ﬁlm, and starred in the series
+ies for 10 years until the release o for 10 years until the release of th
+f the eighth and ﬁnal ﬁlm in 2011. e eighth and ﬁnal ﬁlm in 2011. Rad
+Radcliﬀe began to branch out to s cliﬀebegantobranchout to stage
+tage acting in 2007, starring in the acting in 2007, starring in the Lond
+London and New York productions ofon and New York productions ofEquus
+Equus,and ,andinthe
+in2001’sThe TailorofPanama. At in2001’sThe Tailor of Panama. At in2001’sTheTailorofPanama.At ofPanama.At age 11, he was cast a
+age 11,hewascastas Harry Potter age 11, he was cast as Harry Potter age 11, he was cast as Harry Potter s Harry Potter intheﬁrst Harry Po
+intheﬁrst Harry Potterﬁlm, and in the ﬁrst Harry Potter ﬁlm, and intheﬁrst Harry Potter ﬁlm,and tterﬁlm,andstarredintheseries
+starred in the series for 10 yearsu starred in the series for 10 years u starredintheseries for 10 years u for 10 years until thereleaseoft
+ntil the release oftheeighth and f ntil the release of the eighth and f ntilthereleaseoftheeighthandf heeighthandﬁnalﬁlm in2011.R
+inalﬁlm in 2011. Radcliﬀebegan inal ﬁlm in 2011.Radcliﬀe began inalﬁlm in2011.Radcliﬀe began adcliﬀe began tobranch out tostag
+to branch outto stage acting in 200 to branch out to stage acting in 200 tobranch out tostage acting in200 e actingin2007, starring intheLo
+7, starring inthe London and New 7, starring in the London and New 7, starring intheLondonandNewYondonandNewYorkproductions ofEqu
+rkproductions ofEquus, and in the us, and in the 2011 Broadway revival
+2011 Broadway revival of the musical of the musical How to Succeed in Bu
+How to Succeed in Business Without siness Without Really Trying. He sta
+Really Trying. He starred in the 201 rred in the 2012 horror ﬁlm The Wom
+2 horror ﬁlm The Woman in Black, an an in Black, and played beat poet Al
+d played beat poet Allen Ginsberg in len Ginsberg in the 2013 independent
+the 2013 independent ﬁlm Kill Your ﬁlm Kill Your Darlings.Hehascon
+Darlings.Hehascontributed to ma tributedtomanycharities, includin
+ny charities g Demelza House Children’s
+Yorkproductions ofEquus, and in t Yorkproductions ofEquus, and in t York productions ofEquus,andin t in the2011 Broadway revival of the
+he 2011 Broadway revival ofthe musi he 2011 Broadway revival of the musi he2011 Broadway revival of themusi musical How to Succeed inBusiness
+cal How to SucceedinBusiness Witho cal How to Succeed in Business Witho cal How to Succeed inBusiness Witho Without Really Trying .Hestarredin
+utReallyTrying.He starred inthe ut Really Trying. He starred in the ut Really Trying .Hestarredin the the2012 horror ﬁlm TheWomaninB
+2012 horror ﬁlmThe Woman inBlack, 2012 horror ﬁlm The Woman in Black, 2012 horror ﬁlm TheWomaninBlack,lack,andplayed beat poet Allen Gin
+and played beat poet Allen Gins berg and played beat poet Allen Ginsberg andplayed beat poet Allen Ginsberg sbergin the2013 independent ﬁlm K
+inthe2013 independent ﬁlmKill Y in the 2013 independent ﬁlm Kill Y in the2013 independent ﬁlm Kill Y ill Your Darlings .Hehas contribute
+our<unk>.He has contributed to ma our<unk>.Hehascontributed to ma our Darlings .He has contributed to d to many charities , including Demel
+ny charities, ny charities, many charities , including Demelza H za House Children’sHospice and The
+ouseChildren’sHospice and TheTrev TrevorProject.Healso made public
+orProject.Healso made public serv service announcements for thelatter
+ice announcements for thelatter.In .In 2011, he wasawarded the Trevor
+2011, he wasawarded the Trevor Pro Project’s "HeroAward."
+ject’s "HeroAward."Sources disagr
+ee about Radcliﬀe’s personal wealth
+; hewasreported to have earned £1
+millionfor theﬁrst Harry Potter
+including <unk >HospiceCareforCh including <unk>HospiceCarefor Ch
+ildren,and The Trevor Projectfors ildren,and TheTrevorProjectfors
+uicideprevention among LGBTQyouth, uicide prevention among LGBTQ youth ,
+whichgavehimits Hero Award in20 which gave him its Hero Award in 20
+11.= =Earlylife==Radcliﬀew 11.= = Early life = = Radcliﬀe w
+asborninWestLondon, England .He asborninWest London ,England.He
+istheonlychildofAlanGeorgeRad istheonly child ofAlan George Rad
+cliﬀe,aliteraryagent,and cliﬀe,a literary agent ,and
+41
+
+Improving language models by retrieving from trillions of tokens
+Table 20jSample - Déclaration des droits de l’homme: Article premier. TheR/e.sc/t.sc/r.sc/o.sc[O/f.sc/f.sc] sample has
+correct syntax and is almost plausible but is hallucinated. The R/e.sc/t.sc/r.sc/o.sc[O/n.sc] sample is correctly copied from
+neighbour data, and robustly re-formated according to our prompt.
+Prompt and sample of R/e.sc/t.sc/r.sc/o.sc[O/f.sc/f.sc] Prompt and sample of R/e.sc/t.sc/r.sc/o.sc[O/n.sc]»𝑁1𝑢𝐹1𝑢¼colored by LCP with 𝐶𝑢¸1»𝑁2𝑢𝐹2𝑢¼colored by LCP with 𝐶𝑢¸1
+colored by LCP with R/e.sc/t.sc¹𝐶𝑢 1º
+LCP=0,1,2,3,4,>5 LCP=0,1,2,3,4,>5 LCP=0,1,2,3,4,>5
+Article premier - Les hommes Article premier - Les hommes del’homme et du citoyen .Ar Les hommes naissent etdemeur
+naissent et demeurent libres e naissent et demeurent libres e ticle1erLes hommes naissent ent libres etégaux en droits.
+t égaux en droits. Les distinc t égaux en droits. Les distinc etdemeurent libres etégaux Les distinctions sociales ne
+tions sociales ne peuvent être tions sociales ne peuvent être endroits.Les distinctions so peuvent être fondées que sur l
+fondées que sur l’utilité com fondées que sur l’utilité com cialesnepeuvent être fondées ’utilité commune .Art.2. -
+mune. Article 2. - Le but de mune. Article 2. - Le but de que surl’utilité commune .A Le butdetouteassociation po
+toute association politique e toute association politique e rticle2Le butdetouteasso litique est laconservation de
+st la conservation des droits st la conservation des droits ciation politique est laconse sdroitsnaturelsetimprescri
+naturels et naturels et rvation des droitsnaturelset ptiblesdel’Homme.Cesdroits
+imprescriptiblesdel’homme. sontla liberté, la propriété
+Cesdroitssont la liberté, la , la sûreté , etlarésistance
+propriété, la sûreté , etlar àl’oppression. Art. 3.-Le
+ésistance àl’oppression.Art principedetouteSouverain et
+icle3Leprincipedetoutes érésideessentiellement dans
+ouveraineté réside essentielle laNation.Nulcorps, nul indi
+ment dans la nation. Nul corps vidu ne peut exercer d’autorit
+, nul individu ne peut exercer é qui n’en émane expressément .
+d’autoritéquin’en Art
+imprescriptibles de l’homme, imprescriptiblesdel’homme. criptibles del’homme.Cesdro et imprescriptibles de l’homm
+et par conséquent la garantie Cesdroitssont la liberté, la itssontla liberté, la propri e.Cesdroitssontla liberté,
+à chacun des droits suivants propriété, la sûreté etlaré été, lasûretéetlarésistanc lapropriété , lasûreté et la
+: Article 3. - La propriété sistanceàl’oppression.Arti eà l’oppression .Article3 - résistance à l’oppression .A
+est un droit inviolable et sa cle3.- Leprincipedetoute Le principe detoute souverai rticle3 - Le principe detout
+cré. Toute personne a le droit souverain eté réside essentiel neté réside essentiellement da e souveraineté réside essentie
+de procéder à sa propre cons lement dans la nation. Nul cor nslaNation.Nul corps ,nul i llement dans laNation.Nul co
+ervation. Article 4. - Le ps, nul individu ne peut exerc ndividunepeut exercer d ’auto rps,nul individu nepeut exer
+er d’autorité qui n ritéqui n’enémaneexpresséme cer d’autoritéqui n’enémane
+nt.Article 4 -Lalibertéco expressément.Article 4 -La
+nsisteàpouvoir faire tout ce libertéconsisteàpouvoir fai
+quinenuitpasàautrui : ai re tout ce qui ne nuit pas à a
+nsi, l’exercice des droits nat utrui : ainsi, l’exercice des
+urelsdechaquehommen’a de b droits naturels de chaque homm
+ornes que celles qui assurent e n’a de bornes que celles qui
+auxautresmembres delasocié assurent aux autres membres d
+téla jouissance de e la société la jouissance de
+ces mêmes droits.Cesbornes
+but de toute association est ’enémaneexpressément.Artic mane expressément .Article4 mane expressément .Article4
+la défense des droits de l’hom le4.-Lalibertéconsisteà -Laliberté consiste àpouvoi -Laliberté consiste àpouvoi
+me et du citoyen. Tout citoye pouvoir faire tout ce qui ne r faire tout cequinenuitpa r faire tout cequinenuitpa
+n a le droit de participer à l nuit pas à autrui : ainsi, l’e s àautrui : ainsi ,l’exercice s àautrui : ainsi ,l’exercice
+a direction des aﬀaires publi xercice des droits naturels de desdroitsnaturelsdechaque desdroitsnaturelsdechaque
+ques. Article 5. - L’impuni chaque homme n’a de bornes qu hommen’ade bornesquecelle hommen’ade bornesquecelle
+té n’a jamais été et ne sera j e celles qui assurent aux autr squiassurent aux autres memb squiassurent aux autres memb
+amais une ﬁn en elle-même. L’ es membres de la société la jo resde lasociétélajouissanc resde lasociétélajouissanc
+imp uissance de ces mêmes edeces mêmes droits.Cesbor edeces mêmes droits.Cesbor
+nes ne peuvent être déterminée nes ne peuvent être déterminée
+s que par la loi.Article 5 - s que par la loi.Article 5 -
+Laloin’a le droit de défend Laloin’a le droit de défend
+re que les actions nuisibles à re que les actions nuisibles à
+la société. Tout ce qui n’est la société. Tout ce qui n’est
+pas défendu par la loi ne peu pas défendu par la loi ne peu
+t être empêché, et nul ne peut t être empêché, et nul ne peut
+êtrecontraint àfairecequ’ êtrecontraint àfairecequ’
+ellen ellen
+unité, comme le despotisme, s droits.Cesbornes ne peuvent
+’est toujours révélée être un être déterminées que par la l
+instrument d’oppression. La ty oi.Article 5.-Laloin’a
+rannie qui s’est élue juge su le droit de défendre que les a
+prême de la conscience des aut ctions nuisibles à la société.
+res ne peut être jugée. La jus Tout ce qui n’est pas défendu
+tice se trouve dans la consci par la loi ne peut être empêc
+ence de chaque citoyen, hé, et nul ne peut être
+42
+
+Improving language models by retrieving from trillions of tokens
+Table 21jSample - Decimals of 𝜋.TheR/e.sc/t.sc/r.sc/o.sc[O/f.sc/f.sc] sample quickly diverges two digits after the end
+of the prompt whereas R/e.sc/t.sc/r.sc/o.sc[O/n.sc] correctly outputs a large number of 𝜋digits, directly copied from the
+neighbours data.
+Prompt and sample of R/e.sc/t.sc/r.sc/o.sc[O/f.sc/f.sc] Prompt and sample of R/e.sc/t.sc/r.sc/o.sc[O/n.sc] »𝑁1𝑢𝐹1𝑢¼colored by LCP with 𝐶𝑢¸1»𝑁2𝑢𝐹2𝑢¼colored by LCP with 𝐶𝑢¸1
+colored by LCP with R/e.sc/t.sc¹𝐶𝑢 1º
+LCP=0,1,2,3,4,>5 LCP=0,1,2,3,4,>5 LCP=0,1,2,3,4,>5
+Pi = 3. 1415926535 8979323846 Pi = 3. 1415926535 8979323846 “14159265358979323846 264 33 46 2643383279 5028841971 69399
+2643383279 5028841971 69399375 2643383279 5028841971 69399375 83279 5028841971 693993751058 375105820974944 592307816406
+10 5820974944 5923078164 06286 10 5820974944 5923078164 06286 20974944 5923078164 0628 620899 28620899 8628034 825 3421170679
+20899 8628034825 3421170679 20899 8628034825 3421170679 8628034825 34211706798214808 82148086513282306647 0938446
+651 3282306647 0938446095 5058 095 5058223172 53594081284811
+223172 53594081284811174502 8 1745028410270193 8521105559 6
+410270193 8521105559 644622948 446229489 5493038196 442881097
+9 54930381964428810975 665933 56659334461 2847564823 378678
+4461 284 7564823 3786783 3165 2712019091 45 64856692 346
+0
+8294049602 8988496069 9858349 8214808651 3282306647 0938446 6513282306647 093844 6095 5058 47 093844 6095 5058223172 5359 4
+065 9873246379 9644789435 8628 095 5058223172 53594081284811 223172 5359 40812848111745020812848111745028410270193 85
+730709 6540159079 5944069810 5 174502 8410270193 8521105559 6 8410270193 8521 105559 644 6229421105559 644 6229489 5493038196
+992965913 7095378412 69378359 446229489 5493038196442881097 89 5493038196 44288109 7566593 44288109 756659334461 284 7564
+5 6659334461 284 34461 284 75648233786783165 27 8233786783165 27120190914564
+12019091 4564856692 346034861 856692 3460348610 4543266482 1
+0 4543266482 1339360726 024914 339360726 0249141273724587006
+12737245870066 0631558817 488 6 0631558817 4881520920 962829
+1520920 9628292540 91715 364 2540 91715 364367892590360
+10 6940372045 7088679512 85612 75648233786783165 2712019091 23 3786783165 2712019091 4564 165 27120190914564856692 3460
+30857 9046461290 9276642155 56 4564856692 3460348610 45432664 856692 346034 8610 4543266 4821348610 4543266 4821339360726 0
+54603269 5656128798 6366475705 82 1339360726 024914127372458 339360726 0249141273 724587006 249141273 7245870066 063155881
+6294954741 5886335339 57657 70066 0631558817 4881520920 96 60631558817 4881520920962829 748815209209628292540 91715 3
+28292540 91715 2540 91715 364367892590360 01 64367892590360 0113305305 488
+13305305 4882046652 1384146951 2046652 1384146951 9415116094
+94151160943305727036 5759591 3305727036 5759591953 09218611
+953 0921861173 8193261179 3105 73 8193261179 310511854807446
+1185480744623799 6274 95 23799 6274 956735 1885 752724 89
+1227
+76345 5770886953 7988876910 79 364367892590360 0113305305 48
+66169745 6493974637 6345801550 82046652 1384146951 9415116094
+6663542854 6333764630 6356284 3305727036 5759591953 0921861
+271 7885339804 5672434 173 8193261179 31051185480744
+623799 6274
+43

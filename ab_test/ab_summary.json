@@ -1,0 +1,26 @@
+{
+  "ab_results": [
+    {
+      "name": "large3072",
+      "embed_model": "text-embedding-3-large",
+      "embed_dim": 3072,
+      "overall_score": 0.666667,
+      "recall_at_k": 1.0,
+      "mrr_at_k": 1.0,
+      "latency_ms": 2196.047,
+      "n_cases": 3,
+      "collection": "ab_attention_04e7df3361da"
+    },
+    {
+      "name": "small1536",
+      "embed_model": "text-embedding-3-small",
+      "embed_dim": 1536,
+      "overall_score": 0.666667,
+      "recall_at_k": 1.0,
+      "mrr_at_k": 1.0,
+      "latency_ms": 2232.485,
+      "n_cases": 3,
+      "collection": "ab_attention_11d1570d91e7"
+    }
+  ]
+}

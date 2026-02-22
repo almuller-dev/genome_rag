@@ -1,0 +1,25 @@
+name: Bench Label Validation
+
+on:
+  pull_request:
+  push:
+    branches: [ "main", "master" ]
+
+jobs:
+  validate-bench-labels:
+    runs-on: ubuntu-latest
+    env:
+      BENCH_PATH: bench/support_tickets.jsonl
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate Retrieval Labels (100% required)
+        run: |
+          python3 --version
+          bash tools/check_bench_labels_ci.sh

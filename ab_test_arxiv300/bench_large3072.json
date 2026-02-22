@@ -1,0 +1,1 @@
+{"overall_score": 0.016667, "latency_ms": 10.958, "cost_usd": 0.0, "n_cases": 300, "n_retrieval_eval_cases": 300, "elapsed_s": 110.906, "collection": "ab_arxiv300_eb3ff553a9f1", "top_k": 5, "qdrant_ef": 128, "recall_at_k": 0.836667, "mrr_at_k": 0.652667, "debug_cases_written": 300, "llm_model": "stub", "embed_model": "text-embedding-3-large"}

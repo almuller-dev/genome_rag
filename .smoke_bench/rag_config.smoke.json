@@ -1,0 +1,15 @@
+{
+  "embed_model": "local-deterministic",
+  "embed_dim": 384,
+  "chunk_size": 300,
+  "chunk_overlap": 40,
+  "qdrant_url": "http://localhost:6333",
+  "qdrant_collection": "smoke_rag",
+  "qdrant_recreate_collection": true,
+  "qdrant_hnsw_m": 16,
+  "qdrant_ef_construct": 100,
+  "top_k": 3,
+  "qdrant_ef": 64,
+  "llm_model": "stub",
+  "prompt_temperature": 0.0
+}

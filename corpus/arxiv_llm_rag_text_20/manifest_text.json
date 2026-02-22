@@ -1,0 +1,142 @@
+[
+  {
+    "arxiv_id": "1706.03762",
+    "title": "Attention Is All You Need",
+    "txt_file": "corpus/arxiv_llm_rag_text_20/1706.03762__attention_is_all_you_need.txt",
+    "n_pages": 15,
+    "chars": 39500
+  },
+  {
+    "arxiv_id": "1810.04805",
+    "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+    "txt_file": "corpus/arxiv_llm_rag_text_20/1810.04805__bert_pre_training_of_deep_bidirectional_transformers_for_language_understanding.txt",
+    "n_pages": 16,
+    "chars": 64078
+  },
+  {
+    "arxiv_id": "2005.14165",
+    "title": "Language Models are Few-Shot Learners",
+    "txt_file": "corpus/arxiv_llm_rag_text_20/2005.14165__language_models_are_few_shot_learners.txt",
+    "n_pages": 75,
+    "chars": 236667
+  },
+  {
+    "arxiv_id": "2112.04426",
+    "title": "Improving language models by retrieving from trillions of tokens",
+    "txt_file": "corpus/arxiv_llm_rag_text_20/2112.04426__improving_language_models_by_retrieving_from_trillions_of_tokens.txt",
+    "n_pages": 43,
+    "chars": 142604
+  },
+  {
+    "arxiv_id": "2203.02155",
+    "title": "Training language models to follow instructions with human feedback",
+    "txt_file": "corpus/arxiv_llm_rag_text_20/2203.02155__training_language_models_to_follow_instructions_with_human_feedback.txt",
+    "n_pages": 68,
+    "chars": 181596
+  },
+  {
+    "arxiv_id": "2201.11903",
+    "title": "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models",
+    "txt_file": "corpus/arxiv_llm_rag_text_20/2201.11903__chain_of_thought_prompting_elicits_reasoning_in_large_language_models.txt",
+    "n_pages": 43,
+    "chars": 134079
+  },
+  {
+    "arxiv_id": "2203.11171",
+    "title": "Self-Consistency Improves Chain of Thought Reasoning in Language Models",
+    "txt_file": "corpus/arxiv_llm_rag_text_20/2203.11171__self_consistency_improves_chain_of_thought_reasoning_in_language_models.txt",
+    "n_pages": 24,
+    "chars": 90148
+  },
+  {
+    "arxiv_id": "2210.03629",
+    "title": "ReAct: Synergizing Reasoning and Acting in Language Models",
+    "txt_file": "corpus/arxiv_llm_rag_text_20/2210.03629__react_synergizing_reasoning_and_acting_in_language_models.txt",
+    "n_pages": 33,
+    "chars": 109926
+  },
+  {
+    "arxiv_id": "2302.04761",
+    "title": "Toolformer: Language Models Can Teach Themselves to Use Tools",
+    "txt_file": "corpus/arxiv_llm_rag_text_20/2302.04761__toolformer_language_models_can_teach_themselves_to_use_tools.txt",
+    "n_pages": 17,
+    "chars": 71795
+  },
+  {
+    "arxiv_id": "2302.13971",
+    "title": "LLaMA: Open and Efficient Foundation Language Models",
+    "txt_file": "corpus/arxiv_llm_rag_text_20/2302.13971__llama_open_and_efficient_foundation_language_models.txt",
+    "n_pages": 27,
+    "chars": 88069
+  },
+  {
+    "arxiv_id": "2307.03172",
+    "title": "Lost in the Middle: How Language Models Use Long Contexts",
+    "txt_file": "corpus/arxiv_llm_rag_text_20/2307.03172__lost_in_the_middle_how_language_models_use_long_contexts.txt",
+    "n_pages": 18,
+    "chars": 65292
+  },
+  {
+    "arxiv_id": "2205.14135",
+    "title": "FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness",
+    "txt_file": "corpus/arxiv_llm_rag_text_20/2205.14135__flashattention_fast_and_memory_efficient_exact_attention_with_io_awareness.txt",
+    "n_pages": 34,
+    "chars": 107421
+  },
+  {
+    "arxiv_id": "2309.12307",
+    "title": "LongLoRA: Efficient Fine-tuning of Long-Context Large Language Models",
+    "txt_file": "corpus/arxiv_llm_rag_text_20/2309.12307__longlora_efficient_fine_tuning_of_long_context_large_language_models.txt",
+    "n_pages": 19,
+    "chars": 67444
+  },
+  {
+    "arxiv_id": "2309.15217",
+    "title": "Ragas: Automated Evaluation of Retrieval Augmented Generation",
+    "txt_file": "corpus/arxiv_llm_rag_text_20/2309.15217__ragas_automated_evaluation_of_retrieval_augmented_generation.txt",
+    "n_pages": 8,
+    "chars": 31948
+  },
+  {
+    "arxiv_id": "2312.10997",
+    "title": "Retrieval-Augmented Generation for Large Language Models: A Survey",
+    "txt_file": "corpus/arxiv_llm_rag_text_20/2312.10997__retrieval_augmented_generation_for_large_language_models_a_survey.txt",
+    "n_pages": 21,
+    "chars": 110015
+  },
+  {
+    "arxiv_id": "2311.11045",
+    "title": "Orca 2: Teaching Small Language Models How to Reason",
+    "txt_file": "corpus/arxiv_llm_rag_text_20/2311.11045__orca_2_teaching_small_language_models_how_to_reason.txt",
+    "n_pages": 53,
+    "chars": 156697
+  },
+  {
+    "arxiv_id": "2404.14219",
+    "title": "Phi-3 Technical Report: A Highly Capable Language Model Locally on Your Phone",
+    "txt_file": "corpus/arxiv_llm_rag_text_20/2404.14219__phi_3_technical_report_a_highly_capable_language_model_locally_on_your_phone.txt",
+    "n_pages": 24,
+    "chars": 56710
+  },
+  {
+    "arxiv_id": "2406.15319",
+    "title": "LongRAG: Enhancing Retrieval-Augmented Generation with Long-context LLMs",
+    "txt_file": "corpus/arxiv_llm_rag_text_20/2406.15319__longrag_enhancing_retrieval_augmented_generation_with_long_context_llms.txt",
+    "n_pages": 19,
+    "chars": 59994
+  },
+  {
+    "arxiv_id": "2004.04906",
+    "title": "Dense Passage Retrieval for Open-Domain Question Answering",
+    "txt_file": "corpus/arxiv_llm_rag_text_20/2004.04906__dense_passage_retrieval_for_open_domain_question_answering.txt",
+    "n_pages": 13,
+    "chars": 55859
+  },
+  {
+    "arxiv_id": "2305.06983",
+    "title": "Active Retrieval Augmented Generation",
+    "txt_file": "corpus/arxiv_llm_rag_text_20/2305.06983__active_retrieval_augmented_generation.txt",
+    "n_pages": 24,
+    "chars": 91750
+  }
+]

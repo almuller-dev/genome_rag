@@ -1,0 +1,33 @@
+{
+  "ab_results": [
+    {
+      "name": "large3072",
+      "embed_model": "text-embedding-3-large",
+      "embed_dim": 3072,
+      "recall_at_k": 0.836667,
+      "mrr_at_k": 0.652667,
+      "latency_ms": 10.958,
+      "n_cases": 300
+    },
+    {
+      "name": "small1536",
+      "embed_model": "text-embedding-3-small",
+      "embed_dim": 1536,
+      "recall_at_k": 0.55,
+      "mrr_at_k": 0.360111,
+      "latency_ms": 8.625,
+      "n_cases": 300
+    }
+  ],
+  "rank_wins": {
+    "n_both_hit": 156,
+    "large_better": 68,
+    "small_better": 19,
+    "ties": 69
+  },
+  "delta": {
+    "recall_at_k_small_minus_large": -0.286667,
+    "mrr_at_k_small_minus_large": -0.292556,
+    "latency_ms_small_minus_large": -2.333
+  }
+}

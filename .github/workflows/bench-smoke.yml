@@ -1,0 +1,36 @@
+name: Bench Smoke Thresholds
+
+on:
+  pull_request:
+  push:
+    branches: [ "main", "master" ]
+
+jobs:
+  bench-smoke:
+    runs-on: ubuntu-latest
+    services:
+      qdrant:
+        image: qdrant/qdrant:latest
+        ports:
+          - 6333:6333
+    env:
+      QDRANT_URL: http://localhost:6333
+      MIN_RECALL_AT_K: "1.0"
+      MIN_MRR_AT_K: "0.8"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Smoke Dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install qdrant-client
+
+      - name: Run Benchmark Smoke Threshold Check
+        run: |
+          bash tools/check_bench_smoke.sh

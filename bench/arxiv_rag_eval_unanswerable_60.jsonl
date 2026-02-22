@@ -1,0 +1,60 @@
+{"case_id": "UA_0001", "query": "What is the capital city of France?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0002", "query": "How do I reset my iPhone passcode?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0003", "query": "Who won the NBA championship in 2020?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0004", "query": "What is the boiling point of water in Celsius?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0005", "query": "How do I file U.S. federal taxes online?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0006", "query": "What are symptoms of vitamin D deficiency?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0007", "query": "How do I configure a home Wi-Fi router?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0008", "query": "What is Kubernetes used for in cloud engineering?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0009", "query": "How do I create a pivot table in Excel?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0010", "query": "What does HTTP 404 mean?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0011", "query": "How do I tie a Windsor knot?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0012", "query": "What is the current price of Bitcoin?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0013", "query": "How do I bake sourdough bread?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0014", "query": "What are side effects of ibuprofen?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0015", "query": "How can I recover deleted photos on Android?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0016", "query": "What is the formula for area of a circle?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0017", "query": "How do I renew my passport?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0018", "query": "What is the weather forecast for New York tomorrow?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0019", "query": "How to train a dog to stop barking?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0020", "query": "Who wrote The Great Gatsby?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0021", "query": "What is the capital city of France?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0022", "query": "How do I reset my iPhone passcode?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0023", "query": "Who won the NBA championship in 2020?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0024", "query": "What is the boiling point of water in Celsius?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0025", "query": "How do I file U.S. federal taxes online?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0026", "query": "What are symptoms of vitamin D deficiency?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0027", "query": "How do I configure a home Wi-Fi router?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0028", "query": "What is Kubernetes used for in cloud engineering?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0029", "query": "How do I create a pivot table in Excel?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0030", "query": "What does HTTP 404 mean?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0031", "query": "How do I tie a Windsor knot?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0032", "query": "What is the current price of Bitcoin?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0033", "query": "How do I bake sourdough bread?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0034", "query": "What are side effects of ibuprofen?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0035", "query": "How can I recover deleted photos on Android?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0036", "query": "What is the formula for area of a circle?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0037", "query": "How do I renew my passport?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0038", "query": "What is the weather forecast for New York tomorrow?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0039", "query": "How to train a dog to stop barking?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0040", "query": "Who wrote The Great Gatsby?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0041", "query": "What is the capital city of France?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0042", "query": "How do I reset my iPhone passcode?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0043", "query": "Who won the NBA championship in 2020?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0044", "query": "What is the boiling point of water in Celsius?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0045", "query": "How do I file U.S. federal taxes online?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0046", "query": "What are symptoms of vitamin D deficiency?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0047", "query": "How do I configure a home Wi-Fi router?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0048", "query": "What is Kubernetes used for in cloud engineering?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0049", "query": "How do I create a pivot table in Excel?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0050", "query": "What does HTTP 404 mean?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0051", "query": "How do I tie a Windsor knot?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0052", "query": "What is the current price of Bitcoin?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0053", "query": "How do I bake sourdough bread?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0054", "query": "What are side effects of ibuprofen?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0055", "query": "How can I recover deleted photos on Android?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0056", "query": "What is the formula for area of a circle?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0057", "query": "How do I renew my passport?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0058", "query": "What is the weather forecast for New York tomorrow?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0059", "query": "How to train a dog to stop barking?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}
+{"case_id": "UA_0060", "query": "Who wrote The Great Gatsby?", "gold": "__NO_ANSWER__", "expected_unanswerable": true, "slice": "unanswerable"}

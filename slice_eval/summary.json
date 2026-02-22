@@ -1,0 +1,24 @@
+{
+  "slice_results": [
+    {
+      "slice": "natural_200",
+      "n_cases": 200,
+      "overall_score": 0.84555,
+      "avg_correctness": 0.84,
+      "avg_groundedness": 0.8585,
+      "recall_at_k": 0.775,
+      "mrr_at_k": 0.60975,
+      "latency_ms": 1581.808
+    },
+    {
+      "slice": "unanswerable_60",
+      "n_cases": 60,
+      "overall_score": 0.869667,
+      "avg_correctness": 0.866667,
+      "avg_groundedness": 0.876667,
+      "n_unanswerable_cases": 60,
+      "unanswerable_accuracy": 0.866667,
+      "latency_ms": 1695.229
+    }
+  ]
+}

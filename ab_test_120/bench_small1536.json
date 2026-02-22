@@ -1,0 +1,1 @@
+{"overall_score": 0.908333, "latency_ms": 1214.255, "cost_usd": 0.0, "n_cases": 120, "n_retrieval_eval_cases": 120, "elapsed_s": 186.291, "collection": "ab_attention120_11d1570d91e7", "top_k": 5, "qdrant_ef": 128, "recall_at_k": 0.025, "mrr_at_k": 0.018333, "debug_cases_written": 120, "llm_model": "gpt-5.2", "embed_model": "text-embedding-3-small"}

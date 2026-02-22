@@ -1,0 +1,33 @@
+{
+  "strict_retrieval_ab": [
+    {
+      "name": "large3072",
+      "embed_model": "text-embedding-3-large",
+      "embed_dim": 3072,
+      "recall_at_k": 0.85,
+      "mrr_at_k": 0.661944,
+      "latency_ms": 7.524,
+      "n_cases": 120
+    },
+    {
+      "name": "small1536",
+      "embed_model": "text-embedding-3-small",
+      "embed_dim": 1536,
+      "recall_at_k": 0.858333,
+      "mrr_at_k": 0.665,
+      "latency_ms": 6.713,
+      "n_cases": 120
+    }
+  ],
+  "rank_wins": {
+    "n_both_hit": 94,
+    "large_better": 25,
+    "small_better": 19,
+    "ties": 50
+  },
+  "delta": {
+    "recall_at_k_small_minus_large": 0.008333,
+    "mrr_at_k_small_minus_large": 0.003056,
+    "latency_ms_small_minus_large": -0.811
+  }
+}

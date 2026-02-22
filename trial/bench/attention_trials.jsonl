@@ -1,0 +1,3 @@
+{"query":"What architecture replaces recurrence and convolution entirely?","gold":"self-attention","relevant_doc_id":"attention_is_all_you_need.txt","relevant_text":"self-attention"}
+{"query":"How many attention heads are used in the base model?","gold":"8","relevant_doc_id":"attention_is_all_you_need.txt","relevant_text":"h = 8"}
+{"query":"What optimizer and schedule are used for training?","gold":"Adam","relevant_doc_id":"attention_is_all_you_need.txt","relevant_text":"We used the Adam optimizer"}

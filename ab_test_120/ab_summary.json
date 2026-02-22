@@ -1,0 +1,32 @@
+{
+  "ab_results": [
+    {
+      "name": "large3072",
+      "embed_model": "text-embedding-3-large",
+      "embed_dim": 3072,
+      "overall_score": 0.941667,
+      "recall_at_k": 0.016667,
+      "mrr_at_k": 0.016667,
+      "latency_ms": 1234.388,
+      "n_cases": 120,
+      "collection": "ab_attention120_04e7df3361da"
+    },
+    {
+      "name": "small1536",
+      "embed_model": "text-embedding-3-small",
+      "embed_dim": 1536,
+      "overall_score": 0.908333,
+      "recall_at_k": 0.025,
+      "mrr_at_k": 0.018333,
+      "latency_ms": 1214.255,
+      "n_cases": 120,
+      "collection": "ab_attention120_11d1570d91e7"
+    }
+  ],
+  "pairwise_rank_comparison": {
+    "n_compared": 2,
+    "large_better": 1,
+    "small_better": 0,
+    "ties": 1
+  }
+}

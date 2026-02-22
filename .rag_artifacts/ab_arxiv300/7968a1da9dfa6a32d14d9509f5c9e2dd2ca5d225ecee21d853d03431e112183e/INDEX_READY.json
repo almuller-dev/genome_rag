@@ -1,0 +1,25 @@
+{
+  "built_at_ms": 1771779344527,
+  "elapsed_s": 19.191127591300756,
+  "embed_meta": {
+    "batch_size": 64,
+    "dim": 1536,
+    "model": "text-embedding-3-small",
+    "provider": "openai"
+  },
+  "index_key": "7968a1da9dfa6a32d14d9509f5c9e2dd2ca5d225ecee21d853d03431e112183e",
+  "index_sig": {
+    "chunk_overlap": 64,
+    "chunk_size": 512,
+    "chunker_version": "chunker_v1",
+    "docs_fingerprint": "b68f0ddde64395e6278a6e6580cf1d2828727c4a83f4ad7b57d3381497df6c27",
+    "embed_dim": 1536,
+    "embed_model": "text-embedding-3-small",
+    "ingest_code_version": "ingest_v1",
+    "qdrant_ef_construct": 200,
+    "qdrant_hnsw_m": 16
+  },
+  "n_chunks": 1752,
+  "qdrant_collection": "ab_arxiv300_7968a1da9dfa",
+  "status": "ok"
+}

@@ -1,0 +1,22 @@
+{
+  "arm": "a",
+  "failures": [
+    "overall_score 0.868000 < 0.930000",
+    "recall_at_k 0.790000 < 0.980000",
+    "mrr_at_k 0.652208 < 0.950000"
+  ],
+  "metrics_source": "slice_eval/ab_hybrid_vs_dense_400_judged.json",
+  "ok": false,
+  "summary": {
+    "latency_ms": 1418.918,
+    "mrr_at_k": 0.652208,
+    "overall_score": 0.868,
+    "recall_at_k": 0.79,
+    "thresholds": {
+      "max_latency_ms": 1500.0,
+      "min_mrr_at_k": 0.95,
+      "min_overall_score": 0.93,
+      "min_recall_at_k": 0.98
+    }
+  }
+}

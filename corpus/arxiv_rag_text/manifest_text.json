@@ -1,0 +1,62 @@
+[
+  {
+    "arxiv_id": "2208.03299",
+    "txt_file": "corpus/arxiv_rag_text/2208.03299__atlas_few_shot_learning_with_retrieval_augmented_language_models.txt",
+    "n_pages": 33,
+    "chars": 120309
+  },
+  {
+    "arxiv_id": "2310.04408",
+    "txt_file": "corpus/arxiv_rag_text/2310.04408__recomp_improving_retrieval_augmented_lms_with_compression_and_selective_augmentation.txt",
+    "n_pages": 23,
+    "chars": 80113
+  },
+  {
+    "arxiv_id": "2404.16130",
+    "txt_file": "corpus/arxiv_rag_text/2404.16130__from_local_to_global_a_graph_rag_approach_to_query_focused_summarization.txt",
+    "n_pages": 26,
+    "chars": 89455
+  },
+  {
+    "arxiv_id": "2509.01092",
+    "txt_file": "corpus/arxiv_rag_text/2509.01092__refrag_rethinking_rag_based_decoding.txt",
+    "n_pages": 30,
+    "chars": 105603
+  },
+  {
+    "arxiv_id": "2310.11511",
+    "txt_file": "corpus/arxiv_rag_text/2310.11511__self_rag_learning_to_retrieve_generate_and_critique_through_self_reflection.txt",
+    "n_pages": 30,
+    "chars": 105430
+  },
+  {
+    "arxiv_id": "2007.01282",
+    "txt_file": "corpus/arxiv_rag_text/2007.01282__leveraging_passage_retrieval_with_generative_models_for_open_domain_question_answering.txt",
+    "n_pages": 6,
+    "chars": 23296
+  },
+  {
+    "arxiv_id": "2005.11401",
+    "txt_file": "corpus/arxiv_rag_text/2005.11401__retrieval_augmented_generation_for_knowledge_intensive_nlp_tasks.txt",
+    "n_pages": 19,
+    "chars": 69149
+  },
+  {
+    "arxiv_id": "2401.15884",
+    "txt_file": "corpus/arxiv_rag_text/2401.15884__corrective_retrieval_augmented_generation.txt",
+    "n_pages": 16,
+    "chars": 61309
+  },
+  {
+    "arxiv_id": "2301.12652",
+    "txt_file": "corpus/arxiv_rag_text/2301.12652__replug_retrieval_augmented_black_box_language_models.txt",
+    "n_pages": 12,
+    "chars": 51491
+  },
+  {
+    "arxiv_id": "2401.18059",
+    "txt_file": "corpus/arxiv_rag_text/2401.18059__raptor_recursive_abstractive_processing_for_tree_organized_retrieval.txt",
+    "n_pages": 23,
+    "chars": 77344
+  }
+]

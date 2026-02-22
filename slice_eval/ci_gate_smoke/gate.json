@@ -1,0 +1,18 @@
+{
+  "arm": "b",
+  "failures": [],
+  "metrics_source": "slice_eval/ci_gate_smoke/metrics.json",
+  "ok": true,
+  "summary": {
+    "latency_ms": 60.35,
+    "mrr_at_k": 0.9375,
+    "overall_score": 0.0,
+    "recall_at_k": 1.0,
+    "thresholds": {
+      "max_latency_ms": 10000.0,
+      "min_mrr_at_k": 0.0,
+      "min_overall_score": 0.0,
+      "min_recall_at_k": 0.0
+    }
+  }
+}

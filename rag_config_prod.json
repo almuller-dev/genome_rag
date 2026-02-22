@@ -1,0 +1,41 @@
+{
+  "__comment_1": "Production-leaning default profile based on 400-case A/B winner (hybrid + rerank).",
+  "__comment_2": "Prefer environment variable OPENAI_API_KEY. Keep openai_api_key blank unless needed.",
+  "__comment_3": "Use this for serving and baseline runs. For judged evaluation, use a separate eval config.",
+
+  "openai_api_key": "",
+  "openai_base_url": "",
+  "openai_organization": "",
+
+  "embed_model": "text-embedding-3-large",
+  "embed_dim": 3072,
+  "embed_batch_size": 64,
+
+  "chunk_size": 512,
+  "chunk_overlap": 64,
+
+  "qdrant_url": "http://localhost:6333",
+  "qdrant_api_key": null,
+  "qdrant_collection": "rag_support",
+  "qdrant_recreate_collection": false,
+  "qdrant_hnsw_m": 16,
+  "qdrant_ef_construct": 200,
+
+  "top_k": 5,
+  "qdrant_ef": 128,
+  "retrieval_mode": "hybrid_rrf",
+  "retrieval_candidate_k": 20,
+  "hybrid_rrf_k": 60,
+  "hybrid_dense_weight": 1.0,
+  "hybrid_lexical_weight": 1.0,
+  "hybrid_lexical_top_k": 20,
+
+  "use_reranker": true,
+  "rerank_top_n": 20,
+  "reranker_lexical_weight": 0.8,
+
+  "__comment_llm_model": "Set to your chosen runtime model; this uses the same OpenAI key.",
+  "llm_model": "gpt-5.2",
+  "prompt_temperature": 0.0,
+  "llm_max_output_tokens": 120
+}

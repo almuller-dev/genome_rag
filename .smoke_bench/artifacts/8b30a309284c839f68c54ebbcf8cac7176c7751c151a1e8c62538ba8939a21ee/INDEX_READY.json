@@ -1,0 +1,24 @@
+{
+  "built_at_ms": 1771777296615,
+  "elapsed_s": 0.31192351691424847,
+  "embed_meta": {
+    "dim": 384,
+    "model": "local-deterministic",
+    "provider": "local"
+  },
+  "index_key": "8b30a309284c839f68c54ebbcf8cac7176c7751c151a1e8c62538ba8939a21ee",
+  "index_sig": {
+    "chunk_overlap": 40,
+    "chunk_size": 300,
+    "chunker_version": "chunker_v1",
+    "docs_fingerprint": "81ce0423215c4ac2789dc1cbce5e13aa7b1b66b3fbaf7bc7d99a92177a2ccabb",
+    "embed_dim": 384,
+    "embed_model": "local-deterministic",
+    "ingest_code_version": "ingest_v1",
+    "qdrant_ef_construct": 100,
+    "qdrant_hnsw_m": 16
+  },
+  "n_chunks": 2,
+  "qdrant_collection": "smoke_rag_8b30a309284c",
+  "status": "ok"
+}

@@ -1,0 +1,82 @@
+[
+  {
+    "arxiv_id": "2208.03299",
+    "arxiv_id_versioned": "2208.03299v3",
+    "title": "Atlas: Few-shot Learning with Retrieval Augmented Language Models",
+    "pdf_url": "https://arxiv.org/pdf/2208.03299.pdf",
+    "file": "corpus/arxiv_rag_papers/2208.03299__atlas_few_shot_learning_with_retrieval_augmented_language_models.pdf",
+    "bytes": 921252
+  },
+  {
+    "arxiv_id": "2310.04408",
+    "arxiv_id_versioned": "2310.04408v1",
+    "title": "RECOMP: Improving Retrieval-Augmented LMs with Compression and Selective Augmentation",
+    "pdf_url": "https://arxiv.org/pdf/2310.04408.pdf",
+    "file": "corpus/arxiv_rag_papers/2310.04408__recomp_improving_retrieval_augmented_lms_with_compression_and_selective_augmentation.pdf",
+    "bytes": 764449
+  },
+  {
+    "arxiv_id": "2404.16130",
+    "arxiv_id_versioned": "2404.16130v2",
+    "title": "From Local to Global: A Graph RAG Approach to Query-Focused Summarization",
+    "pdf_url": "https://arxiv.org/pdf/2404.16130.pdf",
+    "file": "corpus/arxiv_rag_papers/2404.16130__from_local_to_global_a_graph_rag_approach_to_query_focused_summarization.pdf",
+    "bytes": 6893854
+  },
+  {
+    "arxiv_id": "2509.01092",
+    "arxiv_id_versioned": "2509.01092v2",
+    "title": "REFRAG: Rethinking RAG based Decoding",
+    "pdf_url": "https://arxiv.org/pdf/2509.01092.pdf",
+    "file": "corpus/arxiv_rag_papers/2509.01092__refrag_rethinking_rag_based_decoding.pdf",
+    "bytes": 1374083
+  },
+  {
+    "arxiv_id": "2310.11511",
+    "arxiv_id_versioned": "2310.11511v1",
+    "title": "Self-RAG: Learning to Retrieve, Generate, and Critique through Self-Reflection",
+    "pdf_url": "https://arxiv.org/pdf/2310.11511.pdf",
+    "file": "corpus/arxiv_rag_papers/2310.11511__self_rag_learning_to_retrieve_generate_and_critique_through_self_reflection.pdf",
+    "bytes": 1405127
+  },
+  {
+    "arxiv_id": "2007.01282",
+    "arxiv_id_versioned": "2007.01282v2",
+    "title": "Leveraging Passage Retrieval with Generative Models for Open Domain Question Answering",
+    "pdf_url": "https://arxiv.org/pdf/2007.01282.pdf",
+    "file": "corpus/arxiv_rag_papers/2007.01282__leveraging_passage_retrieval_with_generative_models_for_open_domain_question_answering.pdf",
+    "bytes": 326612
+  },
+  {
+    "arxiv_id": "2005.11401",
+    "arxiv_id_versioned": "2005.11401v4",
+    "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+    "pdf_url": "https://arxiv.org/pdf/2005.11401.pdf",
+    "file": "corpus/arxiv_rag_papers/2005.11401__retrieval_augmented_generation_for_knowledge_intensive_nlp_tasks.pdf",
+    "bytes": 885323
+  },
+  {
+    "arxiv_id": "2401.15884",
+    "arxiv_id_versioned": "2401.15884v3",
+    "title": "Corrective Retrieval Augmented Generation",
+    "pdf_url": "https://arxiv.org/pdf/2401.15884.pdf",
+    "file": "corpus/arxiv_rag_papers/2401.15884__corrective_retrieval_augmented_generation.pdf",
+    "bytes": 667756
+  },
+  {
+    "arxiv_id": "2301.12652",
+    "arxiv_id_versioned": "2301.12652v4",
+    "title": "REPLUG: Retrieval-Augmented Black-Box Language Models",
+    "pdf_url": "https://arxiv.org/pdf/2301.12652.pdf",
+    "file": "corpus/arxiv_rag_papers/2301.12652__replug_retrieval_augmented_black_box_language_models.pdf",
+    "bytes": 1070080
+  },
+  {
+    "arxiv_id": "2401.18059",
+    "arxiv_id_versioned": "2401.18059v1",
+    "title": "RAPTOR: Recursive Abstractive Processing for Tree-Organized Retrieval",
+    "pdf_url": "https://arxiv.org/pdf/2401.18059.pdf",
+    "file": "corpus/arxiv_rag_papers/2401.18059__raptor_recursive_abstractive_processing_for_tree_organized_retrieval.pdf",
+    "bytes": 2547113
+  }
+]

@@ -1,0 +1,5 @@
+Cancellation instructions:
+Open Plans > Manage Plan > Cancel Subscription.
+
+Invoice download:
+Go to Billing > Invoices and click Download PDF.

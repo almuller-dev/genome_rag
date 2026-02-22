@@ -1,0 +1,5 @@
+Password reset instructions:
+Go to Settings > Security > Reset Password and confirm via email.
+
+Billing address update:
+Go to Billing > Address and save your changes.
