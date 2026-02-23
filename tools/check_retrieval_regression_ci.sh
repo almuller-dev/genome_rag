@@ -83,7 +83,9 @@ echo "Running benchmark:"
 printf '  %q ' "${run_cmd[@]}"
 echo
 
-if ! "${run_cmd[@]}" >"$BENCH_STDOUT" 2>"$BENCH_STDERR"; then
+if "${run_cmd[@]}" >"$BENCH_STDOUT" 2>"$BENCH_STDERR"; then
+  :
+else
   rc=$?
   echo "Benchmark command failed with exit code $rc"
   echo "--- benchmark.stderr (tail -200) ---"
