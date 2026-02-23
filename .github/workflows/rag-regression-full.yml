@@ -1,0 +1,127 @@
+name: RAG Retrieval Regression (Full)
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly Monday 06:00 UTC
+    - cron: "0 6 * * 1"
+
+jobs:
+  rag-regression-full:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      QDRANT_URL: http://localhost:6333
+      BENCH_PATH: bench/arxiv_llm_rag_eval_400_strict.jsonl
+      DOCS_DIR: corpus/arxiv_llm_rag_text_20
+      MIN_OVERALL_SCORE: "0.93"
+      MIN_RECALL_AT_K: "0.98"
+      MIN_MRR_AT_K: "0.95"
+      MAX_LATENCY_MS: "1500"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install qdrant-client openai
+
+      - name: Start Qdrant Container
+        run: |
+          docker pull qdrant/qdrant:v1.7.0
+          docker run -d --name qdrant-ci -p 6333:6333 qdrant/qdrant:v1.7.0
+
+      - name: Wait for Qdrant
+        run: |
+          for i in {1..60}; do
+            if curl -fsS "${QDRANT_URL}/readyz" >/dev/null 2>&1 || curl -fsS "${QDRANT_URL}/healthz" >/dev/null 2>&1; then
+              echo "Qdrant is ready."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Qdrant failed readiness check at ${QDRANT_URL}"
+          exit 1
+
+      - name: Validate Required Secret
+        run: |
+          if [[ -z "${OPENAI_API_KEY:-}" ]]; then
+            echo "Missing required repository secret OPENAI_API_KEY"
+            exit 1
+          fi
+
+      - name: Build CI Config
+        run: |
+          mkdir -p .ci_runtime
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          cfg = json.loads(Path("rag_config_prod.json").read_text(encoding="utf-8"))
+          cfg.update({
+              "qdrant_url": "http://localhost:6333",
+              "qdrant_collection": "ci_rag",
+              "qdrant_recreate_collection": True,
+              "answer_scoring_mode": "llm_judge",
+              "judge_model": cfg.get("llm_model", "gpt-5.2"),
+              "judge_temperature": 0.0,
+              "judge_max_output_tokens": 180,
+              "llm_max_output_tokens": 120,
+          })
+          Path(".ci_runtime/rag_config_ci.json").write_text(
+              json.dumps(cfg, indent=2, sort_keys=True), encoding="utf-8"
+          )
+          print("Wrote .ci_runtime/rag_config_ci.json")
+          PY
+
+      - name: Ingest Corpus
+        run: |
+          python3 ingest_docs.py \
+            --config .ci_runtime/rag_config_ci.json \
+            --docs-dir "$DOCS_DIR" \
+            --artifact-dir .ci_runtime/artifacts \
+            --collection ci_rag
+
+      - name: Resolve INDEX_READY Marker
+        run: |
+          INDEX_READY="$(find .ci_runtime/artifacts -type f -name INDEX_READY.json | head -n 1)"
+          if [[ -z "$INDEX_READY" || ! -f "$INDEX_READY" ]]; then
+            echo "INDEX_READY.json not found under .ci_runtime/artifacts"
+            exit 1
+          fi
+          echo "INDEX_READY=$INDEX_READY" >> "$GITHUB_ENV"
+          echo "Resolved INDEX_READY=$INDEX_READY"
+
+      - name: Run Regression Gate
+        run: |
+          tools/check_retrieval_regression_ci.sh \
+            --config .ci_runtime/rag_config_ci.json \
+            --bench "$BENCH_PATH" \
+            --index-ready "$INDEX_READY" \
+            --out-dir .ci_runtime/results \
+            --min-overall-score "$MIN_OVERALL_SCORE" \
+            --min-recall-at-k "$MIN_RECALL_AT_K" \
+            --min-mrr-at-k "$MIN_MRR_AT_K" \
+            --max-latency-ms "$MAX_LATENCY_MS"
+
+      - name: Upload Regression Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-regression-full-results
+          path: |
+            .ci_runtime/results
+            .ci_runtime/rag_config_ci.json
+
+      - name: Cleanup Qdrant Container
+        if: always()
+        run: |
+          docker logs qdrant-ci >/tmp/qdrant-ci.log 2>&1 || true
+          docker rm -f qdrant-ci || true
