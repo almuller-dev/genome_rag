@@ -83,9 +83,17 @@ echo "Running benchmark:"
 printf '  %q ' "${run_cmd[@]}"
 echo
 
-"${run_cmd[@]}" >"$BENCH_STDOUT" 2>"$BENCH_STDERR"
+if ! "${run_cmd[@]}" >"$BENCH_STDOUT" 2>"$BENCH_STDERR"; then
+  rc=$?
+  echo "Benchmark command failed with exit code $rc"
+  echo "--- benchmark.stderr (tail -200) ---"
+  tail -n 200 "$BENCH_STDERR" || true
+  echo "--- benchmark.stdout (tail -200) ---"
+  tail -n 200 "$BENCH_STDOUT" || true
+  exit "$rc"
+fi
 
-python3 - "$BENCH_STDOUT" "$METRICS_JSON" <<'PY'
+if ! python3 - "$BENCH_STDOUT" "$METRICS_JSON" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -110,6 +118,14 @@ if obj is None:
 metrics_path.write_text(json.dumps(obj, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 print(json.dumps(obj, indent=2, sort_keys=True))
 PY
+then
+  echo "Failed to parse benchmark metrics JSON from stdout."
+  echo "--- benchmark.stderr (tail -200) ---"
+  tail -n 200 "$BENCH_STDERR" || true
+  echo "--- benchmark.stdout (tail -200) ---"
+  tail -n 200 "$BENCH_STDOUT" || true
+  exit 1
+fi
 
 python3 "$ROOT_DIR/tools/check_regression.py" \
   --metrics-json "$METRICS_JSON" \
